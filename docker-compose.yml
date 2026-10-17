@@ -1,5 +1,6 @@
 services:
   banco:
+    container_name: rally-db
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -16,6 +17,7 @@ services:
       start_period: 10s
 
   backend:
+    container_name: rally-backend
     build:
       context: .
       dockerfile: Dockerfile

@@ -1,0 +1,44 @@
+name: CI/CD do backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-rally-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 45
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Executar testes
+        run: mvn -B -ntp verify
+
+      - name: Deploy (prod)
+        env:
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          RALLY_BACKEND_PORT: ${{ vars.RALLY_BACKEND_PORT || '127.0.0.1:8082' }}
+          RALLY_FRONTEND_ORIGIN: ${{ vars.RALLY_FRONTEND_ORIGIN }}
+          RALLY_ASSISTENTES: ${{ vars.RALLY_ASSISTENTES }}
+          RALLY_BACKEND_IMAGE: ${{ vars.RALLY_BACKEND_IMAGE }}
+          SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID: ${{ secrets.SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID }}
+          SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET: ${{ secrets.SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODELO_REGRAS: ${{ vars.OPENROUTER_MODELO_REGRAS }}
+          OPENROUTER_MODELO_FOTOS: ${{ vars.OPENROUTER_MODELO_FOTOS }}
+          OPENROUTER_MODELOS_RESERVA: ${{ vars.OPENROUTER_MODELOS_RESERVA }}
+          GOOGLE_DRIVE_PASTA_CENTRAL: ${{ vars.GOOGLE_DRIVE_PASTA_CENTRAL }}
+        run: make deploy

@@ -3,7 +3,8 @@ COMPOSE_FILE ?= docker-compose.yml
 ENV_FILE ?= ../.env
 PROJECT_NAME ?= rally-backend
 
-DC = $(COMPOSE) --project-name $(PROJECT_NAME) --env-file "$(ENV_FILE)" -f "$(COMPOSE_FILE)"
+ENV_FILE_ARG = $(if $(wildcard $(ENV_FILE)),--env-file "$(ENV_FILE)")
+DC = $(COMPOSE) --project-name $(PROJECT_NAME) $(ENV_FILE_ARG) -f "$(COMPOSE_FILE)"
 
 .DEFAULT_GOAL := help
 .PHONY: help build up deploy start stop restart down status logs
@@ -25,7 +26,7 @@ build:
 	$(DC) build backend
 
 up:
-	$(DC) up --build --detach --remove-orphans
+	$(DC) up --build --detach --remove-orphans --wait --wait-timeout 180
 
 deploy: up
 
