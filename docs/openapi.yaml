@@ -1,0 +1,810 @@
+openapi: 3.0.3
+info:
+  title: API Rally das Tribos
+  version: 1.0.0
+  description: >-
+    API REST do Rally das Tribos. O backend usa JSON em snake_case. Em modo de
+    produção, rotas privadas exigem sessão autenticada pelo OAuth2 Login do
+    Google; o acesso administrativo a formulários também verifica o e-mail
+    verificado contra a lista de assistentes configurada. No modo de demonstração,
+    a autenticação Spring Security é desativada e as operações que leem o contexto
+    de acesso usam os cabeçalhos X-Papel e X-Tribo-Id, conforme descrito em cada
+    operação.
+servers:
+  - url: http://localhost:8080
+    description: Execução local padrão
+tags:
+  - name: Saúde
+  - name: Dados do Rally
+  - name: Relatórios
+  - name: Regras
+  - name: Formulários
+  - name: Formulários públicos
+
+security:
+  - sessaoGoogle: []
+  - {}
+
+paths:
+  /api/v1/saude:
+    get:
+      tags: [Saúde]
+      summary: Verifica se o serviço está ativo
+      security: []
+      responses:
+        '200':
+          description: Serviço disponível
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaSaude'
+
+  /api/v1/nacoes:
+    get:
+      tags: [Dados do Rally]
+      summary: Lista as nações
+      responses:
+        '200':
+          description: Nações cadastradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaNacao'
+
+  /api/v1/tribos:
+    get:
+      tags: [Dados do Rally]
+      summary: Lista as tribos
+      responses:
+        '200':
+          description: Tribos cadastradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaTribo'
+
+  /api/v1/missoes:
+    get:
+      tags: [Dados do Rally]
+      summary: Lista as missões
+      responses:
+        '200':
+          description: Missões cadastradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaMissao'
+
+  /api/v1/relatorios:
+    get:
+      tags: [Relatórios]
+      summary: Lista relatórios visíveis para o papel informado
+      description: >-
+        No contexto lido pelo serviço, ASSISTENTE recebe todos os relatórios e
+        COORDENADOR recebe os da tribo indicada. Sem X-Papel, o papel usado é
+        ASSISTENTE. Em produção também é necessária uma sessão autenticada.
+      parameters:
+        - $ref: '#/components/parameters/Papel'
+        - $ref: '#/components/parameters/TriboId'
+      responses:
+        '200':
+          description: Relatórios visíveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+    post:
+      tags: [Relatórios]
+      summary: Envia um relatório
+      description: >-
+        Exige o papel COORDENADOR e X-Tribo-Id correspondente a tribo_id. O
+        coordenador só pode enviar relatórios para a própria tribo. Em produção,
+        também é necessária uma sessão autenticada.
+      parameters:
+        - $ref: '#/components/parameters/Papel'
+        - $ref: '#/components/parameters/TriboId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoRelatorio'
+      responses:
+        '200':
+          description: Relatório criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/relatorios/{id}/aprovar:
+    post:
+      tags: [Relatórios]
+      summary: Aprova um relatório
+      description: Exige o papel ASSISTENTE. Em produção, também é necessária uma sessão autenticada.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/Papel'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoRevisao'
+      responses:
+        '200':
+          description: Relatório aprovado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/relatorios/{id}/rejeitar:
+    post:
+      tags: [Relatórios]
+      summary: Rejeita um relatório
+      description: Exige o papel ASSISTENTE. Em produção, também é necessária uma sessão autenticada.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/Papel'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoRevisao'
+      responses:
+        '200':
+          description: Relatório rejeitado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/relatorios/{id}/arquivos:
+    post:
+      tags: [Relatórios]
+      summary: Envia um arquivo para o Google Drive e o associa ao relatório
+      description: >-
+        O arquivo não pode estar vazio. A operação exige acesso de ASSISTENTE
+        ou de COORDENADOR vinculado à tribo do relatório, além de uma sessão
+        Google com autorização para o Drive. O limite de arquivo configurado pelo
+        servidor Spring é 15 MB. Em produção, também é necessária uma sessão autenticada.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/Papel'
+        - $ref: '#/components/parameters/TriboId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [arquivo]
+              properties:
+                arquivo:
+                  type: string
+                  format: binary
+                  description: Arquivo não vazio a enviar ao Google Drive.
+      responses:
+        '200':
+          description: Identificador do arquivo no Google Drive
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '502':
+          description: O Google Drive não confirmou o envio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '503':
+          description: A sessão ou a integração com o Google Drive não está disponível
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/placar:
+    get:
+      tags: [Dados do Rally]
+      summary: Gera o placar das tribos
+      responses:
+        '200':
+          description: Tribos classificadas por pontuação
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaPlacar'
+
+  /api/v1/regras/interpretar:
+    post:
+      tags: [Regras]
+      summary: Interpreta um texto de regras
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoInterpretacao'
+      responses:
+        '200':
+          description: Interpretação produzida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaInterpretacao'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+
+  /api/v1/formularios:
+    get:
+      tags: [Formulários]
+      summary: Lista formulários públicos cadastrados
+      description: >-
+        Exige uma assistente autorizada. Em modo de demonstração, o papel é
+        conferido pelo cabeçalho X-Papel; em produção, o e-mail verificado da
+        sessão Google deve estar na lista configurada de assistentes.
+      parameters:
+        - $ref: '#/components/parameters/Papel'
+      responses:
+        '200':
+          description: Formulários cadastrados, inclusive token de acesso público
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Formulario'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+    post:
+      tags: [Formulários]
+      summary: Cria um formulário público
+      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      parameters:
+        - $ref: '#/components/parameters/Papel'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DefinicaoFormulario'
+      responses:
+        '200':
+          description: Formulário criado com token público gerado pelo servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Formulario'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+
+  /api/v1/formularios/{id}/desativar:
+    post:
+      tags: [Formulários]
+      summary: Desativa um formulário público
+      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      parameters:
+        - $ref: '#/components/parameters/FormularioId'
+        - $ref: '#/components/parameters/Papel'
+      responses:
+        '200':
+          description: Formulário desativado; resposta sem corpo
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+
+  /api/v1/publico/formularios/{token}:
+    get:
+      tags: [Formulários públicos]
+      summary: Consulta a definição de um formulário público ativo
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TokenFormulario'
+      responses:
+        '200':
+          description: Definição do formulário, tribos disponíveis e requisito de foto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormularioPublico'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/publico/formularios/{token}/respostas:
+    post:
+      tags: [Formulários públicos]
+      summary: Envia respostas de um formulário público
+      description: >-
+        A parte dados deve conter JSON. A parte arquivo é opcional; quando
+        enviada, deve ser uma imagem JPEG, PNG ou WebP de até 5 MB. O arquivo é
+        obrigatório se a missão associada exigir foto. Perguntas, opções,
+        campos obrigatórios e a missão devem corresponder à definição do formulário.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TokenFormulario'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [dados]
+              properties:
+                dados:
+                  $ref: '#/components/schemas/EnvioFormulario'
+                arquivo:
+                  type: string
+                  format: binary
+                  description: Imagem opcional JPEG, PNG ou WebP, com até 5 MB.
+            encoding:
+              dados:
+                contentType: application/json
+      responses:
+        '200':
+          description: Resposta registrada e identificador do relatório criado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/formularios/respostas/{id}:
+    get:
+      tags: [Formulários]
+      summary: Consulta respostas e definição do formulário associado a um relatório
+      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/Papel'
+      responses:
+        '200':
+          description: Respostas associadas ao relatório
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaFormulario'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+
+  /api/v1/formularios/respostas/{id}/foto:
+    get:
+      tags: [Formulários]
+      summary: Obtém a foto enviada com as respostas
+      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/Papel'
+      responses:
+        '200':
+          description: Bytes da imagem armazenada
+          headers:
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: nosniff
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+components:
+  securitySchemes:
+    sessaoGoogle:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: >-
+        Cookie de sessão do Spring Security após autenticação pelo OAuth2 Login
+        do Google. Aplicável quando RALLY_MODO_DEMONSTRACAO=false; no modo de
+        demonstração a cadeia Spring Security permite as requisições.
+  parameters:
+    Papel:
+      name: X-Papel
+      in: header
+      required: false
+      description: >-
+        Papel lido pelo serviço de acesso. Valores reconhecidos: ASSISTENTE e
+        COORDENADOR. Se ausente ou em branco, o código usa ASSISTENTE. No modo
+        de demonstração este valor seleciona o contexto de acesso, mas não é
+        autenticação segura.
+      schema:
+        type: string
+        enum: [ASSISTENTE, COORDENADOR]
+    TriboId:
+      name: X-Tribo-Id
+      in: header
+      required: false
+      description: UUID da tribo do coordenador; obrigatório para operações que exigem contexto de coordenador.
+      schema:
+        type: string
+        format: uuid
+    RelatorioId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID do relatório.
+      schema:
+        type: string
+        format: uuid
+    FormularioId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID do formulário.
+      schema:
+        type: string
+        format: uuid
+    TokenFormulario:
+      name: token
+      in: path
+      required: true
+      description: Token hexadecimal de 64 caracteres do formulário público.
+      schema:
+        type: string
+        pattern: '^[a-f0-9]{64}$'
+  responses:
+    ErroRequisicao:
+      description: Requisição inválida ou dados rejeitados pela validação
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    AcessoNegado:
+      description: Acesso negado para o papel ou sessão atual
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+    NaoEncontrado:
+      description: Recurso inexistente ou formulário público inválido ou desativado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+  schemas:
+    Erro:
+      type: object
+      description: >-
+        Erros tratados explicitamente pela API usam a propriedade mensagem.
+        Respostas de validação automática do Spring podem incluir outras
+        propriedades, pois seguem o formato padrão do framework.
+      additionalProperties: true
+      properties:
+        mensagem:
+          type: string
+          description: Mensagem da falha retornada pelo handler de exceções da API.
+    RespostaSaude:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        servico:
+          type: string
+          example: servico-rally
+        idioma:
+          type: string
+          example: pt-BR
+    RespostaNacao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+    RespostaTribo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        nacao_id:
+          type: string
+          format: uuid
+        nacao_nome:
+          type: string
+    RespostaMissao:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        prazo_envio:
+          type: string
+          description: Data e hora local de São Paulo, sem offset de fuso horário; pode ser nulo.
+          nullable: true
+        pontos_por_pessoa:
+          type: integer
+        pontos_por_novo_afastado:
+          type: integer
+        bonificacao_a_cada_cinco_novos:
+          type: integer
+        meta_nacional:
+          type: integer
+        bonificacao_meta_nacional:
+          type: integer
+        exige_foto:
+          type: boolean
+        tipo_pessoa:
+          type: string
+        status:
+          type: string
+        versao:
+          type: integer
+    RequisicaoRelatorio:
+      type: object
+      required: [missao_id, tribo_id]
+      properties:
+        missao_id:
+          type: string
+          format: uuid
+        tribo_id:
+          type: string
+          format: uuid
+        quantidade_pessoas:
+          type: integer
+          minimum: 0
+          default: 0
+        quantidade_novos_afastados:
+          type: integer
+          minimum: 0
+          default: 0
+        observacoes:
+          type: string
+          nullable: true
+    RespostaRelatorio:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        missao_id:
+          type: string
+          format: uuid
+        missao_nome:
+          type: string
+        tribo_id:
+          type: string
+          format: uuid
+        tribo_nome:
+          type: string
+        nacao_nome:
+          type: string
+        quantidade_pessoas:
+          type: integer
+        quantidade_novos_afastados:
+          type: integer
+        observacoes:
+          type: string
+          nullable: true
+        enviado_em:
+          type: string
+          description: Data e hora local de São Paulo, sem offset de fuso horário.
+        atrasado:
+          type: boolean
+        status:
+          type: string
+        pontos_aprovados:
+          type: integer
+        justificativa_revisao:
+          type: string
+          nullable: true
+    RequisicaoRevisao:
+      type: object
+      properties:
+        justificativa:
+          type: string
+          nullable: true
+    RespostaPlacar:
+      type: object
+      properties:
+        posicao:
+          type: integer
+        tribo_id:
+          type: string
+          format: uuid
+        tribo_nome:
+          type: string
+        nacao_nome:
+          type: string
+        pontos:
+          type: integer
+          format: int64
+        pessoas_aprovadas:
+          type: integer
+          format: int64
+        relatorios_aprovados:
+          type: integer
+          format: int64
+        bonus_nacional:
+          type: integer
+          format: int64
+    RequisicaoInterpretacao:
+      type: object
+      required: [texto]
+      properties:
+        texto:
+          type: string
+          minLength: 1
+    RespostaInterpretacao:
+      type: object
+      properties:
+        origem:
+          type: string
+        mensagem:
+          type: string
+        texto_original:
+          type: string
+        regras:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        ambiguidades:
+          type: array
+          items:
+            type: string
+    CampoFormulario:
+      type: object
+      required: [id, titulo, tipo]
+      properties:
+        id:
+          type: string
+          maxLength: 80
+        titulo:
+          type: string
+          maxLength: 200
+        tipo:
+          type: string
+          enum: [texto, paragrafo, numero, selecao]
+        obrigatorio:
+          type: boolean
+          default: false
+        opcoes:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            maxLength: 200
+    DefinicaoFormulario:
+      type: object
+      required: [missao_id, titulo, campos]
+      properties:
+        missao_id:
+          type: string
+          format: uuid
+        titulo:
+          type: string
+          maxLength: 200
+        descricao:
+          type: string
+          maxLength: 3000
+          nullable: true
+        campos:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/CampoFormulario'
+    Formulario:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        ativo:
+          type: boolean
+        definicao:
+          $ref: '#/components/schemas/DefinicaoFormulario'
+    EnvioFormulario:
+      type: object
+      required: [relatorio, respostas]
+      properties:
+        relatorio:
+          $ref: '#/components/schemas/RequisicaoRelatorio'
+        respostas:
+          type: object
+          maxProperties: 30
+          additionalProperties:
+            type: string
+    FormularioPublico:
+      type: object
+      properties:
+        definicao:
+          $ref: '#/components/schemas/DefinicaoFormulario'
+        tribos:
+          type: array
+          items:
+            $ref: '#/components/schemas/RespostaTribo'
+        exige_foto:
+          type: boolean
+    RespostaFormulario:
+      type: object
+      properties:
+        respostas:
+          type: object
+          additionalProperties:
+            type: string
+        definicao:
+          $ref: '#/components/schemas/DefinicaoFormulario'
+        tem_foto:
+          type: boolean

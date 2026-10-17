@@ -9,5 +9,6 @@ Os perfis do Codex para este backend ficam em `.codex/agents/`:
 - **Staff Software Engineer** coordena o desenho técnico, define tarefas e contratos, implementa ou integra a lógica de negócio e mantém a visão do backend como um todo.
 - **Security Engineer** deve ser acionado para mudanças em autenticação, autorização, formulários públicos, tokens, dados pessoais, arquivos, CORS ou segredos.
 - **Site Reliability Engineer** deve ser acionado para mudanças em implantação, Docker, configuração de produção, banco e migrations, disponibilidade, observabilidade, desempenho ou recuperação de falhas.
+- **OpenAPI Documentation Engineer** deve ser acionado para documentar a API ou atualizar `docs/openapi.yaml`, sempre lendo os controllers, DTOs, serviços e configurações relevantes antes de descrever os contratos.
 
 Use os especialistas sob demanda e com tarefas delimitadas. Não mantenha mais de dois subagentes ativos ao mesmo tempo. Evite atribuir alterações concorrentes nos mesmos arquivos; o Staff Software Engineer integra os resultados e reporta decisões ou riscos pendentes.
