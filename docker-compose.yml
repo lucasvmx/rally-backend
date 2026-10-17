@@ -1,0 +1,46 @@
+services:
+  banco:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rally}
+      POSTGRES_USER: ${POSTGRES_USER:-rally}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env da raiz}
+    volumes:
+      - dados-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${RALLY_BACKEND_IMAGE:-rally-backend:local}
+    restart: unless-stopped
+    depends_on:
+      banco:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: producao
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID: ${SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID:?Defina o client ID OAuth do Google no arquivo .env da raiz}
+      SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET: ${SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET:?Defina o client secret OAuth do Google no arquivo .env da raiz}
+      RALLY_DATABASE_URL: jdbc:postgresql://banco:5432/${POSTGRES_DB:-rally}
+      RALLY_DATABASE_USUARIO: ${POSTGRES_USER:-rally}
+      RALLY_DATABASE_SENHA: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env da raiz}
+      RALLY_FRONTEND_ORIGIN: ${RALLY_FRONTEND_ORIGIN:-https://rallydastribos.sytes.net}
+      RALLY_ASSISTENTES: ${RALLY_ASSISTENTES:-}
+      RALLY_MODO_DEMONSTRACAO: "false"
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODELO_REGRAS: ${OPENROUTER_MODELO_REGRAS:-}
+      OPENROUTER_MODELO_FOTOS: ${OPENROUTER_MODELO_FOTOS:-}
+      OPENROUTER_MODELOS_RESERVA: ${OPENROUTER_MODELOS_RESERVA:-}
+      GOOGLE_DRIVE_PASTA_CENTRAL: ${GOOGLE_DRIVE_PASTA_CENTRAL:-}
+    ports:
+      - "${RALLY_BACKEND_PORT:-8080}:8080"
+
+volumes:
+  dados-postgres:
