@@ -3,6 +3,7 @@ package br.org.fju.rally.api;
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.RelatorioService;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
+import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -26,19 +27,24 @@ public class FormulariosController {
     private final AcessoService acesso;
     private final RelatorioService relatorios;
     private final MissaoRepositorio missoes;
+    private final NacaoRepositorio nacoes;
     private final TriboRepositorio tribos;
     public FormulariosController(JdbcTemplate banco, JsonMapper json, AcessoService acesso,
-            RelatorioService relatorios, MissaoRepositorio missoes, TriboRepositorio tribos) {
+            RelatorioService relatorios, MissaoRepositorio missoes, NacaoRepositorio nacoes, TriboRepositorio tribos) {
         this.banco = banco; this.json = json; this.acesso = acesso;
-        this.relatorios = relatorios; this.missoes = missoes; this.tribos = tribos;
+        this.relatorios = relatorios; this.missoes = missoes; this.nacoes = nacoes; this.tribos = tribos;
     }
     public record Campo(@NotBlank @Size(max=80) String id, @NotBlank @Size(max=200) String titulo,
                         @NotNull @Pattern(regexp="texto|paragrafo|numero|selecao") String tipo,
                         boolean obrigatorio, @Size(max=50) List<@NotBlank @Size(max=200) String> opcoes) {}
-    public record Definicao(@NotNull UUID missaoId, @NotBlank @Size(max=200) String titulo,
+    public record Definicao(UUID missaoId, @NotBlank @Size(max=200) String titulo,
                            @Size(max=3000) String descricao, @NotNull @Size(max=30) List<@NotNull @Valid Campo> campos) {}
     public record Formulario(UUID id, String token, boolean ativo, Definicao definicao) {}
     public record Envio(@NotNull @Valid RequisicaoRelatorio relatorio,
+                        @NotNull UUID nacaoId,
+                        @NotBlank @Size(max=5000) String nomesIntegrantes,
+                        @NotBlank @Size(max=5000) String nomesNovosAfastados,
+                        @NotBlank @Size(max=200) String preenchidoPor,
                         @NotNull @Size(max=30) Map<String, String> respostas) {}
 
     @GetMapping("/formularios")
@@ -51,17 +57,18 @@ public class FormulariosController {
     @PostMapping("/formularios")
     public Formulario criar(@Valid @RequestBody Definicao definicao, HttpServletRequest req) {
         acesso.exigirAdministracaoFormularios(req);
-        if (!missoes.existsById(definicao.missaoId())) throw erro("Missão inválida.");
         Set<String> ids = new HashSet<>();
+        Set<String> camposReservados = Set.of("nomes_integrantes", "nomes_novos_afastados", "preenchido_por");
         for (Campo campo : definicao.campos()) {
-            if (campo.tipo() == null || !ids.add(campo.id())) throw erro("Pergunta inválida ou repetida.");
+            if (campo.tipo() == null || !ids.add(campo.id()) || camposReservados.contains(campo.id())) throw erro("Pergunta inválida ou repetida.");
             if (campo.tipo().equals("selecao") && (campo.opcoes() == null || campo.opcoes().isEmpty()))
                 throw erro("Informe as opções da pergunta.");
         }
         byte[] segredo = new byte[32]; new SecureRandom().nextBytes(segredo);
-        Formulario form = new Formulario(UUID.randomUUID(), HexFormat.of().formatHex(segredo), true, definicao);
+        Definicao semMissao = new Definicao(null, definicao.titulo(), definicao.descricao(), definicao.campos());
+        Formulario form = new Formulario(UUID.randomUUID(), HexFormat.of().formatHex(segredo), true, semMissao);
         banco.update("INSERT INTO formularios_publicos(id, token, definicao) VALUES (?, ?, ?)",
-            form.id(), form.token(), json.writeValueAsString(definicao));
+            form.id(), form.token(), json.writeValueAsString(semMissao));
         return form;
     }
     @PostMapping("/formularios/{id}/desativar")
@@ -80,15 +87,24 @@ public class FormulariosController {
     @GetMapping("/publico/formularios/{token}")
     public Map<String, Object> publico(@PathVariable String token) {
         Formulario form = buscar(token);
-        return Map.of("definicao", form.definicao(), "tribos", tribos.findAll().stream().map(RespostaTribo::de).toList(),
-            "exige_foto", missoes.findById(form.definicao().missaoId()).orElseThrow().isExigeFoto());
+        return Map.of("definicao", form.definicao(),
+            "nacoes", nacoes.findAll().stream().map(RespostaNacao::de).toList(),
+            "tribos", tribos.findAll().stream().map(RespostaTribo::de).toList(),
+            "missoes", missoes.findAll().stream().map(RespostaMissao::de).toList(),
+            "exige_foto", true);
     }
     @PostMapping(value="/publico/formularios/{token}/respostas", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public Map<String, UUID> enviar(@PathVariable String token, @Valid @RequestPart("dados") Envio envio,
-                                   @RequestPart(value="arquivo", required=false) MultipartFile arquivo) throws IOException {
+                                   @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos) throws IOException {
         Formulario form = buscar(token);
-        if (!form.definicao().missaoId().equals(envio.relatorio().missaoId())) throw erro("Missão inválida.");
+        if (form.definicao().missaoId() != null && !form.definicao().missaoId().equals(envio.relatorio().missaoId())) throw erro("Missão inválida.");
+        if (!missoes.existsById(envio.relatorio().missaoId())) throw erro("Missão inválida.");
+        var tribo = tribos.findById(envio.relatorio().triboId()).orElseThrow(() -> erro("Tribo inválida."));
+        if (!tribo.getNacao().getId().equals(envio.nacaoId())) throw erro("A tribo selecionada não pertence à nação informada.");
+        if (quantidadeNomes(envio.nomesIntegrantes()) != envio.relatorio().quantidadePessoas()
+                || quantidadeNomes(envio.nomesNovosAfastados()) != envio.relatorio().quantidadeNovosAfastados())
+            throw erro("As quantidades do relatório não correspondem aos nomes informados.");
         Set<String> permitidos = new HashSet<>();
         for (Campo campo : form.definicao().campos()) {
             permitidos.add(campo.id());
@@ -101,20 +117,20 @@ public class FormulariosController {
             if (!valor.isBlank() && campo.tipo().equals("selecao") && !campo.opcoes().contains(valor)) throw erro("Opção inválida.");
         }
         if (!permitidos.containsAll(envio.respostas().keySet())) throw erro("Pergunta desconhecida.");
-        boolean temFoto = arquivo != null && !arquivo.isEmpty();
-        if (missoes.findById(form.definicao().missaoId()).orElseThrow().isExigeFoto() && !temFoto)
-            throw erro("Esta missão exige uma foto.");
-        if (temFoto && (arquivo.getSize() > 5 * 1024 * 1024 || !Set.of("image/jpeg", "image/png", "image/webp").contains(Objects.toString(arquivo.getContentType(), ""))))
+        if (arquivos == null || arquivos.size() != 1 || arquivos.getFirst().isEmpty()) throw erro("Envie somente uma foto dos integrantes.");
+        MultipartFile arquivo = arquivos.getFirst();
+        if (arquivo.getSize() > 5 * 1024 * 1024 || !Set.of("image/jpeg", "image/png", "image/webp").contains(Objects.toString(arquivo.getContentType(), "")))
             throw erro("Envie uma foto JPEG, PNG ou WebP de até 5 MB.");
-        if (envio.relatorio().observacoes() != null && envio.relatorio().observacoes().length() > 5000) throw erro("Observações muito longas.");
-        byte[] conteudo = temFoto ? arquivo.getBytes() : null;
-        if (temFoto && !assinaturaValida(conteudo, arquivo.getContentType())) throw erro("O arquivo não corresponde ao formato de foto informado.");
-        String nomeArquivo = temFoto ? Objects.toString(arquivo.getOriginalFilename(), "foto") : null;
-        if (nomeArquivo != null && nomeArquivo.length() > 255) nomeArquivo = nomeArquivo.substring(nomeArquivo.length() - 255);
+        byte[] conteudo = arquivo.getBytes();
+        if (!assinaturaValida(conteudo, arquivo.getContentType())) throw erro("O arquivo não corresponde ao formato de foto informado.");
+        String nomeArquivo = "foto";
         RespostaRelatorio relatorio = relatorios.criarPublico(envio.relatorio());
+        Map<String, String> respostas = new LinkedHashMap<>(envio.respostas());
+        respostas.put("nomes_integrantes", envio.nomesIntegrantes());
+        respostas.put("nomes_novos_afastados", envio.nomesNovosAfastados());
+        respostas.put("preenchido_por", envio.preenchidoPor());
         banco.update("INSERT INTO respostas_formularios(relatorio_id, formulario_id, respostas, nome_arquivo, tipo_arquivo, arquivo) VALUES (?, ?, ?, ?, ?, ?)",
-            relatorio.id(), form.id(), json.writeValueAsString(envio.respostas()), nomeArquivo,
-            temFoto ? arquivo.getContentType() : null, conteudo);
+            relatorio.id(), form.id(), json.writeValueAsString(respostas), nomeArquivo, arquivo.getContentType(), conteudo);
         return Map.of("id", relatorio.id());
     }
     @GetMapping("/formularios/respostas/{id}")
@@ -140,6 +156,15 @@ public class FormulariosController {
                 && new String(bytes, 8, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP");
             default -> false;
         };
+    }
+    private static int quantidadeNomes(String nomes) {
+        int quantidade = (int) Arrays.stream(nomes.split("\\R"))
+            .map(String::trim)
+            .filter(nome -> !nome.isBlank())
+            .filter(nome -> !nome.equalsIgnoreCase("nenhum"))
+            .count();
+        if (quantidade > 200) throw erro("Informe no máximo 200 nomes em cada lista.");
+        return quantidade;
     }
     private static ResponseStatusException erro(String mensagem) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, mensagem); }
     private static ResponseStatusException inexistente() { return new ResponseStatusException(HttpStatus.NOT_FOUND, "Link inválido ou desativado."); }

@@ -297,8 +297,15 @@ paths:
           $ref: '#/components/responses/AcessoNegado'
     post:
       tags: [Formulários]
-      summary: Cria um formulário público
-      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      summary: Cria um formulário público para receber relatórios do período
+      description: >-
+        Um formulário é um link de coleta, normalmente mensal, e não fica
+        associado a uma missão. A assistente pode criar a definição com uma
+        lista vazia de campos adicionais. Cada envio escolhe a própria missão.
+        Novos requests omitem missao_id. Nas respostas de formulários novos,
+        o record inclui missao_id nulo; definições antigas ainda podem trazer
+        um UUID. O controller também tolera missao_id em um request de criação
+        legado, mas descarta o valor ao persistir um formulário novo.
       parameters:
         - $ref: '#/components/parameters/Papel'
       requestBody:
@@ -307,6 +314,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/DefinicaoFormulario'
+            example:
+              titulo: Relatório mensal
+              descricao: Relatórios das missões realizadas neste mês.
+              campos: []
       responses:
         '200':
           description: Formulário criado com token público gerado pelo servidor
@@ -342,7 +353,9 @@ paths:
         - $ref: '#/components/parameters/TokenFormulario'
       responses:
         '200':
-          description: Definição do formulário, tribos disponíveis e requisito de foto
+          description: >-
+            Definição do formulário, nações, tribos e missões disponíveis. O
+            requisito de foto é sempre exige_foto=true para este fluxo.
           content:
             application/json:
               schema:
@@ -355,10 +368,22 @@ paths:
       tags: [Formulários públicos]
       summary: Envia respostas de um formulário público
       description: >-
-        A parte dados deve conter JSON. A parte arquivo é opcional; quando
-        enviada, deve ser uma imagem JPEG, PNG ou WebP de até 5 MB. O arquivo é
-        obrigatório se a missão associada exigir foto. Perguntas, opções,
-        campos obrigatórios e a missão devem corresponder à definição do formulário.
+        A parte dados é JSON e deve incluir
+        relatorio, nacao_id, nomes_integrantes, nomes_novos_afastados,
+        preenchido_por e respostas adicionais. relatorio.missao_id é escolhido
+        neste envio, sem vínculo com a definição do formulário. As quantidades
+        em relatorio são contadas pelas linhas não vazias dos campos de nomes;
+        uma linha contendo apenas "nenhum" (sem diferenciar maiúsculas) também
+        não conta. Definições legadas que ainda tenham missao_id continuam
+        restringindo os envios àquela missão.
+        nomes_integrantes, nomes_novos_afastados e preenchido_por são
+        obrigatórios. A parte arquivo é obrigatória e aceita uma única imagem
+        JPEG, PNG ou WebP de até 5 MB. Os valores fixos de nomes e responsável
+        são gravados também em respostas sob as chaves
+        nomes_integrantes, nomes_novos_afastados e preenchido_por.
+        nacao_id deve corresponder à nação da tribo informada; missao_id deve
+        identificar uma missão existente. O conteúdo da foto também precisa
+        corresponder ao MIME type declarado.
       security: []
       parameters:
         - $ref: '#/components/parameters/TokenFormulario'
@@ -368,14 +393,16 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [dados]
+              required: [dados, arquivo]
               properties:
                 dados:
                   $ref: '#/components/schemas/EnvioFormulario'
                 arquivo:
                   type: string
                   format: binary
-                  description: Imagem opcional JPEG, PNG ou WebP, com até 5 MB.
+                  description: >-
+                    Uma única imagem obrigatória JPEG, PNG ou WebP, com até
+                    5 MB. O conteúdo deve corresponder ao tipo informado.
             encoding:
               dados:
                 contentType: application/json
@@ -399,8 +426,13 @@ paths:
   /api/v1/formularios/respostas/{id}:
     get:
       tags: [Formulários]
-      summary: Consulta respostas e definição do formulário associado a um relatório
-      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      summary: Consulta respostas do formulário recebidas pela assistente
+      description: >-
+        Requer autorização administrativa de assistente, conforme o modo de
+        autenticação configurado. O mapa respostas contém os valores fixos
+        nomes_integrantes, nomes_novos_afastados e preenchido_por, além das
+        respostas adicionais. Registros antigos podem continuar trazendo
+        missao_id na definição.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
         - $ref: '#/components/parameters/Papel'
@@ -745,11 +777,8 @@ components:
             maxLength: 200
     DefinicaoFormulario:
       type: object
-      required: [missao_id, titulo, campos]
+      required: [titulo, campos]
       properties:
-        missao_id:
-          type: string
-          format: uuid
         titulo:
           type: string
           maxLength: 200
@@ -762,6 +791,21 @@ components:
           maxItems: 30
           items:
             $ref: '#/components/schemas/CampoFormulario'
+    DefinicaoFormularioPersistida:
+      allOf:
+        - $ref: '#/components/schemas/DefinicaoFormulario'
+        - type: object
+          required: [missao_id]
+          properties:
+            missao_id:
+              type: string
+              format: uuid
+              nullable: true
+              deprecated: true
+              readOnly: true
+              description: >-
+                Campo somente de leitura. Pode conter a missão antiga ou ser
+                nulo em formulários criados sem associação a missão.
     Formulario:
       type: object
       properties:
@@ -774,13 +818,62 @@ components:
         ativo:
           type: boolean
         definicao:
-          $ref: '#/components/schemas/DefinicaoFormulario'
+          $ref: '#/components/schemas/DefinicaoFormularioPersistida'
+    RelatorioFormulario:
+      type: object
+      description: >-
+        Dados do relatório para esta resposta. As quantidades são derivadas
+        da quantidade de linhas não vazias em nomes_integrantes e
+        nomes_novos_afastados, respectivamente. Cada lista aceita no máximo
+        200 nomes.
+      required: [missao_id, tribo_id, quantidade_pessoas, quantidade_novos_afastados]
+      properties:
+        missao_id:
+          type: string
+          format: uuid
+        tribo_id:
+          type: string
+          format: uuid
+        quantidade_pessoas:
+          type: integer
+          minimum: 0
+        quantidade_novos_afastados:
+          type: integer
+          minimum: 0
+        observacoes:
+          type: string
+          nullable: true
     EnvioFormulario:
       type: object
-      required: [relatorio, respostas]
+      required:
+        - relatorio
+        - nacao_id
+        - nomes_integrantes
+        - nomes_novos_afastados
+        - preenchido_por
+        - respostas
       properties:
         relatorio:
-          $ref: '#/components/schemas/RequisicaoRelatorio'
+          $ref: '#/components/schemas/RelatorioFormulario'
+        nacao_id:
+          type: string
+          format: uuid
+          description: Deve corresponder à nação da tribo informada no relatório.
+        nomes_integrantes:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: Lista de integrantes, com um nome por linha.
+        nomes_novos_afastados:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: Lista de pessoas novas ou afastadas, com um nome por linha.
+        preenchido_por:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Nome da pessoa que preencheu o formulário.
         respostas:
           type: object
           maxProperties: 30
@@ -788,23 +881,45 @@ components:
             type: string
     FormularioPublico:
       type: object
+      required: [definicao, nacoes, tribos, missoes, exige_foto]
       properties:
         definicao:
-          $ref: '#/components/schemas/DefinicaoFormulario'
+          $ref: '#/components/schemas/DefinicaoFormularioPersistida'
+        nacoes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RespostaNacao'
         tribos:
           type: array
           items:
             $ref: '#/components/schemas/RespostaTribo'
+        missoes:
+          type: array
+          items:
+            $ref: '#/components/schemas/RespostaMissao'
         exige_foto:
           type: boolean
+          enum: [true]
     RespostaFormulario:
       type: object
       properties:
         respostas:
           type: object
+          description: >-
+            Respostas adicionais e valores fixos do envio. O backend
+            armazena nomes_integrantes, nomes_novos_afastados e preenchido_por
+            também neste mapa; esses campos podem não existir em registros
+            legados.
+          properties:
+            nomes_integrantes:
+              type: string
+            nomes_novos_afastados:
+              type: string
+            preenchido_por:
+              type: string
           additionalProperties:
             type: string
         definicao:
-          $ref: '#/components/schemas/DefinicaoFormulario'
+          $ref: '#/components/schemas/DefinicaoFormularioPersistida'
         tem_foto:
           type: boolean
