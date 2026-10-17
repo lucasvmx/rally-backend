@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: servico-rally
+  datasource:
+    url: ${RALLY_DATABASE_URL:jdbc:postgresql://localhost:5432/rally}
+    username: ${RALLY_DATABASE_USUARIO:rally}
+    password: ${RALLY_DATABASE_SENHA:rally}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    time-zone: America/Sao_Paulo
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 80MB
+
+rally:
+  cors:
+    origem-frontend: ${RALLY_FRONTEND_ORIGIN:https://rallydastribos.sytes.net}
+  autenticacao:
+    assistentes: ${RALLY_ASSISTENTES:}
+    modo-demonstracao: ${RALLY_MODO_DEMONSTRACAO:true}
+  openrouter:
+    endereco: ${OPENROUTER_ENDERECO:https://openrouter.ai/api/v1}
+    chave: ${OPENROUTER_API_KEY:}
+    modelo-regras: ${OPENROUTER_MODELO_REGRAS:}
+    modelo-fotos: ${OPENROUTER_MODELO_FOTOS:}
+    modelos-reserva: ${OPENROUTER_MODELOS_RESERVA:}
+  google-drive:
+    pasta-central: ${GOOGLE_DRIVE_PASTA_CENTRAL:}
+
+server:
+  forward-headers-strategy: framework
+  port: ${PORTA_SERVIDOR:8080}

@@ -1,0 +1,7 @@
+.git
+target
+referencias
+documentacao
+*.log
+.env
+.env.*
