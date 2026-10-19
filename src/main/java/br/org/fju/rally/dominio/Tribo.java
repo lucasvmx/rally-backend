@@ -32,4 +32,7 @@ public class Tribo {
     @Column(name = "ativa", nullable = false)
     private boolean ativa;
 
+    public void definirAtiva(boolean ativa) {
+        this.ativa = ativa;
+    }
 }

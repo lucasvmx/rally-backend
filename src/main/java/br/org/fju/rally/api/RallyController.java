@@ -8,11 +8,13 @@ import br.org.fju.rally.servico.MissaoService;
 import br.org.fju.rally.servico.GoogleDriveService;
 import br.org.fju.rally.servico.PontuacaoService;
 import br.org.fju.rally.servico.RelatorioService;
+import br.org.fju.rally.servico.TriboService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -37,11 +39,13 @@ public class RallyController {
     private final MissaoService missaoService;
     private final GoogleDriveService googleDriveService;
     private final RallyRepositorio rallyRepositorio;
+    private final TriboService triboService;
 
     public RallyController(NacaoRepositorio nacaoRepositorio, TriboRepositorio triboRepositorio,
                            MissaoRepositorio missaoRepositorio, RelatorioService relatorioService,
                            PontuacaoService pontuacaoService, MissaoService missaoService,
-                           GoogleDriveService googleDriveService, RallyRepositorio rallyRepositorio) {
+                           GoogleDriveService googleDriveService, RallyRepositorio rallyRepositorio,
+                           TriboService triboService) {
         this.nacaoRepositorio = nacaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.missaoRepositorio = missaoRepositorio;
@@ -50,6 +54,7 @@ public class RallyController {
         this.missaoService = missaoService;
         this.googleDriveService = googleDriveService;
         this.rallyRepositorio = rallyRepositorio;
+        this.triboService = triboService;
     }
 
     @GetMapping("/saude")
@@ -65,6 +70,12 @@ public class RallyController {
     @GetMapping("/tribos")
     public List<RespostaTribo> tribos() {
         return triboRepositorio.buscarTodasComNacao().stream().map(RespostaTribo::de).toList();
+    }
+
+    @PatchMapping("/tribos/{id}")
+    public RespostaTribo definirSituacaoTribo(@PathVariable UUID id,
+            @Valid @RequestBody RequisicaoStatusTribo corpo, HttpServletRequest requisicao) {
+        return triboService.definirAtiva(id, corpo.ativa(), requisicao);
     }
 
     @GetMapping("/missoes")

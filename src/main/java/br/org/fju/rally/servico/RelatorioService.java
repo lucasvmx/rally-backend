@@ -88,6 +88,9 @@ public class RelatorioService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Missão não encontrada."));
         Tribo tribo = triboRepositorio.findById(corpo.triboId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
+        if (!tribo.isAtiva()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta tribo está inativa e não pode enviar relatórios.");
+        }
         if (missao.isExigeFoto() && !fotoValidadaNoEnvio) {
             throw erro("Esta missão exige foto; envie o relatório pelo formulário com a foto incluída.");
         }

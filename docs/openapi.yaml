@@ -300,6 +300,39 @@ paths:
         '401':
           $ref: '#/components/responses/NaoAutenticado'
 
+  /api/v1/tribos/{id}:
+    patch:
+      tags: [Dados do Rally]
+      summary: Ativa ou desativa uma tribo
+      description: >-
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Define o estado ativo da tribo identificada; a resposta inclui a nação
+        à qual ela pertence.
+      parameters:
+        - $ref: '#/components/parameters/TriboId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoStatusTribo'
+      responses:
+        '200':
+          description: Estado da tribo atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaTribo'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
   /api/v1/missoes:
     get:
       tags: [Dados do Rally]
@@ -1031,6 +1064,14 @@ components:
       schema:
         type: string
         format: uuid
+    TriboId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID da tribo.
+      schema:
+        type: string
+        format: uuid
     FormularioId:
       name: id
       in: path
@@ -1383,6 +1424,14 @@ components:
           enum: [RELATORIO, PESSOA]
           default: RELATORIO
       additionalProperties: true
+    RequisicaoStatusTribo:
+      type: object
+      required: [ativa]
+      properties:
+        ativa:
+          type: boolean
+          description: >-
+            true ativa a tribo; false a desativa.
     RequisicaoRelatorio:
       type: object
       required: [missao_id, tribo_id]
