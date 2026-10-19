@@ -34,9 +34,9 @@ rally:
   openrouter:
     endereco: ${OPENROUTER_ENDERECO:https://openrouter.ai/api/v1}
     chave: ${OPENROUTER_API_KEY:}
-    modelo-regras: ${OPENROUTER_MODELO_REGRAS:}
-    modelo-fotos: ${OPENROUTER_MODELO_FOTOS:}
-    modelos-reserva: ${OPENROUTER_MODELOS_RESERVA:}
+    modelo-regras: ${OPENROUTER_MODELO_REGRAS:deepseek/deepseek-v4.1-flash-1017}
+    modelo-fotos: ${OPENROUTER_MODELO_FOTOS:deepseek/deepseek-v4.1-flash-1017}
+    modelos-reserva: ${OPENROUTER_MODELOS_RESERVA:qwen/qwen3-next-80b-a3b-thinking}
   google-drive:
     pasta-central: ${GOOGLE_DRIVE_PASTA_CENTRAL:}
 
