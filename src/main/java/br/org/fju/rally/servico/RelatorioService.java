@@ -45,19 +45,20 @@ public class RelatorioService {
     public List<RespostaRelatorio> listar(HttpServletRequest requisicao) {
         AcessoService.ContextoAcesso acesso = acessoService.contexto(requisicao);
         return relatorioRepositorio.buscarComReferencias().stream()
-                .filter(relatorio -> acesso.assistente()
-                        || (acesso.coordenador() && acesso.triboId() != null
-                        && acesso.triboId().equals(relatorio.getTribo().getId())))
+                .filter(relatorio -> acesso.podeAcessarTribo(relatorio.getTribo().getId(),
+                        relatorio.getTribo().getNacao().getId()))
                 .map(RespostaRelatorio::de)
                 .toList();
     }
 
     @Transactional
     public RespostaRelatorio criar(RequisicaoRelatorio corpo, HttpServletRequest requisicao) {
-        AcessoService.ContextoAcesso acesso = acessoService.exigirCoordenador(requisicao);
-        if (!acesso.triboId().equals(corpo.triboId())) {
+        AcessoService.ContextoAcesso acesso = acessoService.exigirCoordenador(requisicao, corpo.triboId());
+        Tribo tribo = triboRepositorio.findById(corpo.triboId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
+        if (!acesso.podeAcessarTribo(tribo.getId(), tribo.getNacao().getId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "O coordenador só pode enviar relatório para a própria tribo.");
+                    "O coordenador só pode enviar relatório para sua tribo ou nação.");
         }
 
         return criarPublico(corpo);

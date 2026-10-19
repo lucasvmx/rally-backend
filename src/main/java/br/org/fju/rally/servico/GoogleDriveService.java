@@ -15,6 +15,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
@@ -90,14 +91,22 @@ public class GoogleDriveService {
 
     private void validarAcessoAoRelatorio(Relatorio relatorio, HttpServletRequest requisicao) {
         AcessoService.ContextoAcesso acesso = acessoService.contexto(requisicao);
-        if (!acesso.assistente() && (!acesso.coordenador() || acesso.triboId() == null
-                || !acesso.triboId().equals(relatorio.getTribo().getId()))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode anexar fotos da própria tribo.");
+        if (!acesso.podeAcessarTribo(relatorio.getTribo().getId(), relatorio.getTribo().getNacao().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode anexar fotos da sua tribo ou nação.");
         }
     }
 
     private String tokenGoogle(Authentication autenticacao) {
-        if (!(autenticacao instanceof OAuth2AuthenticationToken oauth)) {
+        String registrationId;
+        String principalName;
+        if (autenticacao instanceof OAuth2AuthenticationToken oauth) {
+            registrationId = oauth.getAuthorizedClientRegistrationId();
+            principalName = oauth.getName();
+        } else if (autenticacao instanceof JwtAuthenticationToken jwt
+                && jwt.getToken().getClaimAsString("google_sub") != null) {
+            registrationId = "google";
+            principalName = jwt.getToken().getClaimAsString("google_sub");
+        } else {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Conecte uma conta Google com acesso ao Drive antes de enviar fotos.");
         }
@@ -106,7 +115,7 @@ public class GoogleDriveService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "A conexão com o Google Drive ainda não foi configurada.");
         }
-        OAuth2AuthorizedClient cliente = servico.loadAuthorizedClient(oauth.getAuthorizedClientRegistrationId(), oauth.getName());
+        OAuth2AuthorizedClient cliente = servico.loadAuthorizedClient(registrationId, principalName);
         if (cliente == null || cliente.getAccessToken() == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "A sessão Google não possui autorização para o Drive.");

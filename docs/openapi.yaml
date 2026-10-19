@@ -4,16 +4,19 @@ info:
   version: 1.0.0
   description: >-
     API REST do Rally das Tribos. O backend usa JSON em snake_case. Fora do modo
-    de demonstração, rotas privadas usam uma sessão Spring Security, iniciada
-    por login local com e-mail e senha ou pelo OAuth2 Login do Google. O acesso
-    administrativo exige que a conta esteja na lista de assistentes configurada;
-    o fluxo Google também exige e-mail verificado. No modo de demonstração, a
-    cadeia Spring Security permite as requisições e a consulta de sessão informa
-    uma sessão de demonstração. As operações que leem o contexto de acesso usam
-    os cabeçalhos X-Papel e X-Tribo-Id, conforme descrito em cada operação; esses
-    cabeçalhos não são controles de autenticação seguros. O modo de demonstração
-    é o padrão da configuração geral (RALLY_MODO_DEMONSTRACAO=true); o perfil de
-    produção o desativa.
+    de demonstração, rotas privadas aceitam a sessão Spring Security iniciada
+    por login local ou OAuth2 Login do Google e também JWT no cabeçalho HTTP
+    Authorization: Bearer. O JWT é emitido na resposta da sessão e expira em
+    15 minutos; contém role e, para coordenadores, tribe_id ou nation_id como
+    escopo. O fluxo Google redireciona o navegador de volta à aplicação; depois
+    o cliente consulta GET /api/v1/autenticacao/sessao para receber o JWT no
+    corpo, sem token na URL. Login Google exige e-mail verificado e conta
+    autorizada ou provisionada. No modo de demonstração, a cadeia Spring
+    Security permite as requisições e a consulta de sessão informa uma sessão
+    de demonstração. A role e o escopo são obtidos da identidade autenticada,
+    não de cabeçalhos definidos pelo cliente. O modo de demonstração é o padrão
+    da configuração geral
+    (RALLY_MODO_DEMONSTRACAO=true); o perfil de produção o desativa.
 servers:
   - url: http://localhost:8080
     description: Execução local padrão
@@ -25,8 +28,10 @@ tags:
   - name: Regras
   - name: Formulários
   - name: Formulários públicos
+  - name: Usuários
 
 security:
+  - bearerJwt: []
   - sessaoAplicacao: []
   - {}
 
@@ -56,8 +61,12 @@ paths:
         provedor será DEMONSTRACAO e email_verificado será true mesmo sem uma
         identidade de usuário autenticada pelo Spring Security. Em produção,
         a resposta identifica sessões locais como LOCAL e sessões Google como
-        GOOGLE.
-      security: []
+        GOOGLE. Em produção, inicie OAuth2 Login do Google em GET
+        /oauth2/authorization/google. Após o callback, o backend redireciona o
+        navegador para / no fluxo de entrada normal; o cliente consulta esta
+        rota com a sessão do navegador e recebe role, os IDs de escopo
+        (tribe_id ou nation_id) e access_token no corpo JSON. O token não é
+        enviado na URL.
       responses:
         '200':
           description: Estado atual da sessão
@@ -71,17 +80,21 @@ paths:
       tags: [Autenticação]
       summary: Inicia uma sessão local com e-mail e senha
       description: >-
-        Aceita contas de acesso existentes cujo e-mail esteja autorizado na
-        configuração de assistentes (RALLY_ASSISTENTES). E-mails são aparados e
-        normalizados para minúsculas para a consulta. A senha tem limite de 128
+        Aceita contas locais existentes associadas a um usuário Rally com role
+        atribuída. E-mails são aparados e normalizados para minúsculas para a
+        consulta. A senha tem limite de 128
         caracteres e de 72 bytes em UTF-8. A primeira e a segunda falha retornam
         401 e informam que a conta será bloqueada após três tentativas. A terceira
         senha incorreta bloqueia a conta e já retorna 423; novas tentativas
-        também retornam 423. Falhas para conta inexistente ou não autorizada
+        também retornam 423. Falhas para conta inexistente ou sem usuário Rally
         retornam 401, mas não incrementam o contador de bloqueio. Um login local
         correto zera o contador. No modo de demonstração a rota ainda tenta
         autenticar a conta local, mas a resposta de sessão é apresentada como
         DEMONSTRACAO e a cadeia de segurança permite as demais requisições.
+        Fora desse modo, uma autenticação bem-sucedida também retorna no corpo
+        role, os IDs de escopo aplicáveis e access_token. O JWT tem validade de
+        15 minutos e deve ser enviado em requisições privadas no cabeçalho HTTP
+        Authorization com o esquema Bearer.
       security: []
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -93,7 +106,7 @@ paths:
               $ref: '#/components/schemas/RequisicaoLogin'
       responses:
         '200':
-          description: Login local concluído; o navegador mantém a sessão por cookie
+          description: Login local concluído; retorna a sessão e o JWT no corpo JSON
           content:
             application/json:
               schema:
@@ -131,9 +144,13 @@ paths:
       summary: Encerra a sessão atual
       description: >-
         Executa o logout do Spring Security e retorna sem corpo. Em produção,
-        as rotas privadas exigem sessão; no modo de demonstração as requisições
-        são permitidas mesmo sem uma sessão autenticada.
+        aceita a sessão do navegador ou o JWT no cabeçalho Authorization: Bearer;
+        no modo de demonstração as requisições são permitidas mesmo sem uma
+        sessão autenticada. O endpoint encerra a sessão Spring Security, mas não
+        revoga um JWT já emitido; esse token permanece válido até expirar
+        (15 minutos após a emissão).
       security:
+        - bearerJwt: []
         - sessaoAplicacao: []
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -186,7 +203,8 @@ paths:
         separada de recuperação: o fluxo GET /api/v1/autenticacao/senha/google
         conduz a esta operação. No modo de demonstração a cadeia de segurança
         permite a requisição, mas o controller ainda exige uma identidade OAuth2
-        Google verificada e autorizada.
+        Google verificada e autorizada. Cabeçalhos de autenticação de API usam
+        o nome HTTP em inglês Authorization, com Bearer para JWT.
       security:
         - sessaoAplicacao: []
       parameters:
@@ -277,14 +295,15 @@ paths:
   /api/v1/relatorios:
     get:
       tags: [Relatórios]
-      summary: Lista relatórios visíveis para o papel informado
+      summary: Lista relatórios visíveis para a role da identidade autenticada
       description: >-
-        No contexto lido pelo serviço, ASSISTENTE recebe todos os relatórios e
-        COORDENADOR recebe os da tribo indicada. Sem X-Papel, o papel usado é
-        ASSISTENTE. Em produção também é necessária uma sessão autenticada.
-      parameters:
-        - $ref: '#/components/parameters/Papel'
-        - $ref: '#/components/parameters/TriboId'
+        A role e seu escopo são obtidos da identidade autenticada, incluindo do
+        JWT apresentado em Authorization: Bearer. ASSISTENTE e
+        ADMINISTRADOR_SISTEMA veem todos os relatórios;
+        COORDENADOR_TRIBO vê relatórios da própria tribo e
+        COORDENADOR_NACAO vê relatórios das tribos da própria nação. Em modo de
+        demonstração, uma requisição sem identidade autenticada usa o contexto
+        ASSISTENTE.
       responses:
         '200':
           description: Relatórios visíveis
@@ -300,12 +319,12 @@ paths:
       tags: [Relatórios]
       summary: Envia um relatório
       description: >-
-        Exige o papel COORDENADOR e X-Tribo-Id correspondente a tribo_id. O
-        coordenador só pode enviar relatórios para a própria tribo. Em produção,
-        também é necessária uma sessão autenticada.
-      parameters:
-        - $ref: '#/components/parameters/Papel'
-        - $ref: '#/components/parameters/TriboId'
+        Exige role COORDENADOR_TRIBO ou COORDENADOR_NACAO no contexto autenticado
+        e permite criar relatório somente para tribo dentro do escopo de
+        tribe_id ou nation_id da identidade. O escopo é lido do JWT enviado em
+        Authorization: Bearer ou da identidade Spring Security. No modo de
+        demonstração, uma requisição sem identidade autenticada usa o
+        COORDENADOR_TRIBO da tribo informada no corpo.
       requestBody:
         required: true
         content:
@@ -330,10 +349,9 @@ paths:
     post:
       tags: [Relatórios]
       summary: Aprova um relatório
-      description: Exige o papel ASSISTENTE. Em produção, também é necessária uma sessão autenticada.
+      description: Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
-        - $ref: '#/components/parameters/Papel'
       requestBody:
         required: false
         content:
@@ -358,10 +376,9 @@ paths:
     post:
       tags: [Relatórios]
       summary: Rejeita um relatório
-      description: Exige o papel ASSISTENTE. Em produção, também é necessária uma sessão autenticada.
+      description: Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
-        - $ref: '#/components/parameters/Papel'
       requestBody:
         required: false
         content:
@@ -388,13 +405,14 @@ paths:
       summary: Envia um arquivo para o Google Drive e o associa ao relatório
       description: >-
         O arquivo não pode estar vazio. A operação exige acesso de ASSISTENTE
-        ou de COORDENADOR vinculado à tribo do relatório, além de uma sessão
-        Google com autorização para o Drive. O limite de arquivo configurado pelo
-        servidor Spring é 15 MB. Em produção, também é necessária uma sessão autenticada.
+        ou ADMINISTRADOR_SISTEMA, ou uma role de coordenador cujo escopo inclua
+        a tribo ou nação do relatório, além de uma sessão Google com autorização
+        para o Drive. Para autenticação por JWT, use Authorization: Bearer; o
+        token de usuário Google contém a referência necessária para localizar a
+        autorização OAuth do Drive. O limite de arquivo configurado pelo servidor
+        Spring é 15 MB.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
-        - $ref: '#/components/parameters/Papel'
-        - $ref: '#/components/parameters/TriboId'
       requestBody:
         required: true
         content:
@@ -467,16 +485,71 @@ paths:
         '400':
           $ref: '#/components/responses/ErroRequisicao'
 
+  /api/v1/usuarios/{email}/role:
+    put:
+      tags: [Usuários]
+      summary: Define a role e o escopo de um usuário
+      description: >-
+        Requer a role ADMINISTRADOR_SISTEMA na identidade autenticada. Envie o
+        JWT no cabeçalho HTTP Authorization com o esquema Bearer. Para
+        COORDENADOR_TRIBO, tribe_id é obrigatório e nation_id deve ser omitido;
+        para COORDENADOR_NACAO, nation_id é obrigatório e tribe_id deve ser
+        omitido. ASSISTENTE e ADMINISTRADOR_SISTEMA não aceitam IDs de escopo.
+        Os IDs de tribo ou nação precisam existir. O administrador inicial
+        definido pela configuração não pode perder ADMINISTRADOR_SISTEMA.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/EmailUsuario'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoPapel'
+            examples:
+              coordenadorTribo:
+                summary: Coordenador vinculado a uma tribo
+                value:
+                  role: COORDENADOR_TRIBO
+                  tribe_id: 11111111-1111-1111-1111-111111111111
+                  nation_id: null
+              coordenadorNacao:
+                summary: Coordenador vinculado a uma nação
+                value:
+                  role: COORDENADOR_NACAO
+                  tribe_id: null
+                  nation_id: 22222222-2222-2222-2222-222222222222
+      responses:
+        '200':
+          description: Role e escopo atribuídos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaUsuario'
+        '400':
+          description: Role inválida, escopo incompatível ou ID de tribo/nação inexistente
+        '401':
+          description: Autenticação necessária fora do modo de demonstração
+        '403':
+          description: >-
+            Identidade sem role ADMINISTRADOR_SISTEMA ou token CSRF ausente ou
+            inválido
+        '409':
+          description: O administrador inicial configurado não pode perder sua role
+
   /api/v1/formularios:
     get:
       tags: [Formulários]
       summary: Lista formulários públicos cadastrados
       description: >-
-        Exige uma assistente autorizada. Em modo de demonstração, o papel é
-        conferido pelo cabeçalho X-Papel; em produção, o e-mail verificado da
-        sessão Google deve estar na lista configurada de assistentes.
-      parameters:
-        - $ref: '#/components/parameters/Papel'
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
+        autenticada. Em produção, uma sessão Google precisa ter e-mail
+        verificado e estar autorizada; também é aceito JWT em Authorization:
+        Bearer. Em modo de demonstração, a verificação de role usa o contexto
+        ASSISTENTE quando não há identidade autenticada.
       responses:
         '200':
           description: Formulários cadastrados, inclusive token de acesso público
@@ -493,14 +566,12 @@ paths:
       summary: Cria um formulário público para receber relatórios do período
       description: >-
         Um formulário é um link de coleta, normalmente mensal, e não fica
-        associado a uma missão. A assistente pode criar a definição com uma
-        lista vazia de campos adicionais. Cada envio escolhe a própria missão.
+        associado a uma missão. ASSISTENTE ou ADMINISTRADOR_SISTEMA pode criar
+        a definição com uma lista vazia de campos adicionais. Cada envio escolhe a própria missão.
         Novos requests omitem missao_id. Nas respostas de formulários novos,
         o record inclui missao_id nulo; definições antigas ainda podem trazer
         um UUID. O controller também tolera missao_id em um request de criação
         legado, mas descarta o valor ao persistir um formulário novo.
-      parameters:
-        - $ref: '#/components/parameters/Papel'
       requestBody:
         required: true
         content:
@@ -527,10 +598,12 @@ paths:
     post:
       tags: [Formulários]
       summary: Desativa um formulário público
-      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
+        autenticada. Em modo de demonstração, uma requisição sem identidade
+        autenticada usa o contexto ASSISTENTE.
       parameters:
         - $ref: '#/components/parameters/FormularioId'
-        - $ref: '#/components/parameters/Papel'
       responses:
         '200':
           description: Formulário desativado; resposta sem corpo
@@ -621,14 +694,13 @@ paths:
       tags: [Formulários]
       summary: Consulta respostas do formulário recebidas pela assistente
       description: >-
-        Requer autorização administrativa de assistente, conforme o modo de
-        autenticação configurado. O mapa respostas contém os valores fixos
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
+        autenticada. O mapa respostas contém os valores fixos
         nomes_integrantes, nomes_novos_afastados e preenchido_por, além das
         respostas adicionais. Registros antigos podem continuar trazendo
         missao_id na definição.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
-        - $ref: '#/components/parameters/Papel'
       responses:
         '200':
           description: Respostas associadas ao relatório
@@ -645,10 +717,9 @@ paths:
     get:
       tags: [Formulários]
       summary: Obtém a foto enviada com as respostas
-      description: Requer autorização administrativa de assistente, conforme o modo de autenticação configurado.
+      description: Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
-        - $ref: '#/components/parameters/Papel'
       responses:
         '200':
           description: Bytes da imagem armazenada
@@ -677,6 +748,14 @@ paths:
 
 components:
   securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Envie o access_token no cabeçalho HTTP Authorization: Bearer. O servidor
+        valida o JWT HS256, o emissor, a audiência e a validade temporal. Tokens
+        emitidos pelo backend expiram 15 minutos após a emissão.
     sessaoAplicacao:
       type: apiKey
       in: cookie
@@ -696,26 +775,13 @@ components:
         escrita; o cookie também deve acompanhar a sessão do navegador.
       schema:
         type: string
-    Papel:
-      name: X-Papel
-      in: header
-      required: false
-      description: >-
-        Papel lido pelo serviço de acesso. Valores reconhecidos: ASSISTENTE e
-        COORDENADOR. Se ausente ou em branco, o código usa ASSISTENTE. No modo
-        de demonstração este valor seleciona o contexto de acesso, mas não é
-        autenticação segura.
+    EmailUsuario:
+      name: email
+      in: path
+      required: true
+      description: E-mail do usuário cuja role e escopo serão definidos.
       schema:
         type: string
-        enum: [ASSISTENTE, COORDENADOR]
-    TriboId:
-      name: X-Tribo-Id
-      in: header
-      required: false
-      description: UUID da tribo do coordenador; obrigatório para operações que exigem contexto de coordenador.
-      schema:
-        type: string
-        format: uuid
     RelatorioId:
       name: id
       in: path
@@ -766,7 +832,6 @@ components:
       properties:
         email:
           type: string
-          format: email
           minLength: 1
           maxLength: 255
         senha:
@@ -787,16 +852,24 @@ components:
           description: >-
             Nova senha local. Além do intervalo de 12 a 128 caracteres, o
             endpoint rejeita valores com mais de 72 bytes em UTF-8.
+    PapelUsuario:
+      type: string
+      enum: [ASSISTENTE, COORDENADOR_TRIBO, COORDENADOR_NACAO, ADMINISTRADOR_SISTEMA]
     RespostaSessao:
       type: object
-      required: [autenticado, email, nome, provedor, email_verificado]
+      description: >-
+        Role é o papel do usuário. Para COORDENADOR_TRIBO, tribe_id informa o
+        escopo; para COORDENADOR_NACAO, nation_id informa o escopo. Os dois IDs
+        são null para ASSISTENTE e ADMINISTRADOR_SISTEMA. Não há uma propriedade
+        JSON separada chamada scope.
+      required: [autenticado, email, nome, provedor, email_verificado, role, tribe_id, nation_id, access_token]
       properties:
         autenticado:
           type: boolean
         email:
           type: string
-          format: email
           nullable: true
+          description: Pode conter um valor descritivo em modo de demonstração.
         nome:
           type: string
           nullable: true
@@ -806,6 +879,65 @@ components:
           nullable: true
         email_verificado:
           type: boolean
+        role:
+          type: string
+          enum: [ASSISTENTE, COORDENADOR_TRIBO, COORDENADOR_NACAO, ADMINISTRADOR_SISTEMA]
+          nullable: true
+          description: >-
+            Nulo para uma sessão anônima fora do modo de demonstração; no modo
+            de demonstração o valor é ASSISTENTE.
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Escopo da role COORDENADOR_TRIBO; nulo para as demais roles.
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Escopo da role COORDENADOR_NACAO; nulo para as demais roles.
+        access_token:
+          type: string
+          nullable: true
+          description: >-
+            JWT de acesso, válido por 15 minutos. Nulo para sessão anônima e no
+            modo de demonstração.
+    RequisicaoPapel:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_TRIBO; deve ser omitido ou nulo para outras roles.
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_NACAO; deve ser omitido ou nulo para outras roles.
+    RespostaUsuario:
+      type: object
+      required: [id, email, role, tribe_id, nation_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
     Erro:
       type: object
       description: >-

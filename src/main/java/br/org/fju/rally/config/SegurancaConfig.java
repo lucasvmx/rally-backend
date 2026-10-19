@@ -1,9 +1,23 @@
 package br.org.fju.rally.config;
 
+import br.org.fju.rally.servico.PapelUsuario;
+import br.org.fju.rally.servico.UsuarioAcesso;
+import br.org.fju.rally.servico.UsuarioAcessoService;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
+import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserRequest;
+import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -14,7 +28,10 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Configuration
 @EnableWebSecurity
@@ -30,7 +47,9 @@ public class SegurancaConfig {
     SecurityFilterChain cadeiaDeSeguranca(
             HttpSecurity http,
             @Value("${rally.autenticacao.modo-demonstracao:true}") boolean modoDemonstracao,
-            AutenticacaoLocalProvider autenticacaoLocal
+            AutenticacaoLocalProvider autenticacaoLocal,
+            OAuth2UserService<OidcUserRequest, OidcUser> usuarioGoogle,
+            Converter<Jwt, ? extends AbstractAuthenticationToken> autenticacaoJwt
     ) throws Exception {
         CookieCsrfTokenRepository repositorioCsrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repositorioCsrf.setCookieCustomizer(cookie -> cookie.path("/").sameSite("Lax").secure(cookieSeguro));
@@ -61,8 +80,9 @@ public class SegurancaConfig {
                             "/api/v1/autenticacao/senha/google").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/v1/autenticacao/login").permitAll()
                     .requestMatchers("/api/v1/publico/formularios/**", "/api/v1/saude", "/oauth2/**", "/login/**").permitAll()
-                    .anyRequest().authenticated())
+                    .anyRequest().hasAnyRole("ASSISTENTE", "COORDENADOR_TRIBO", "COORDENADOR_NACAO", "ADMINISTRADOR_SISTEMA"))
                 .oauth2Login(login -> login
+                        .userInfoEndpoint(userInfo -> userInfo.oidcUserService(usuarioGoogle))
                         .successHandler((requisicao, resposta, autenticacao) -> {
                             if (br.org.fju.rally.api.AutenticacaoController.consumirDestinoDefinirSenha(requisicao)) {
                                 resposta.sendRedirect("/definir-senha");
@@ -70,10 +90,39 @@ public class SegurancaConfig {
                                 resposta.sendRedirect("/");
                             }
                         })
-                        .failureHandler((requisicao, resposta, excecao) -> resposta.sendRedirect("/entrar?erro_google=1")));
+                        .failureHandler((requisicao, resposta, excecao) -> resposta.sendRedirect("/entrar?erro_google=1")))
+                .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(autenticacaoJwt)));
         }
 
         return http.build();
+    }
+
+    @Bean
+    OAuth2UserService<OidcUserRequest, OidcUser> usuarioGoogle(UsuarioAcessoService usuarios) {
+        OidcUserService padrao = new OidcUserService();
+        return requisicao -> {
+            OidcUser usuarioGoogle = padrao.loadUser(requisicao);
+            UsuarioAcesso usuario = usuarios.autenticarGoogle(usuarioGoogle.getEmail(),
+                    Boolean.TRUE.equals(usuarioGoogle.getEmailVerified()), usuarioGoogle.getSubject());
+            Set<GrantedAuthority> autoridades = new HashSet<>(usuarioGoogle.getAuthorities());
+            autoridades.add(new SimpleGrantedAuthority("ROLE_" + usuario.papel().name()));
+            return new DefaultOidcUser(autoridades, usuarioGoogle.getIdToken(), usuarioGoogle.getUserInfo(), "sub");
+        };
+    }
+
+    @Bean
+    Converter<Jwt, ? extends AbstractAuthenticationToken> autenticacaoJwt() {
+        JwtAuthenticationConverter conversor = new JwtAuthenticationConverter();
+        conversor.setJwtGrantedAuthoritiesConverter(jwt -> {
+            String papel = jwt.getClaimAsString("role");
+            try {
+                PapelUsuario.valueOf(papel);
+                return List.of(new SimpleGrantedAuthority("ROLE_" + papel));
+            } catch (RuntimeException excecao) {
+                return List.of();
+            }
+        });
+        return conversor;
     }
 
     @Bean

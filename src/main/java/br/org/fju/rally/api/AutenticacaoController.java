@@ -3,6 +3,10 @@ package br.org.fju.rally.api;
 import br.org.fju.rally.servico.ContaAcessoService;
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.UsuarioLocalPrincipal;
+import br.org.fju.rally.servico.PapelUsuario;
+import br.org.fju.rally.servico.TokenJwtService;
+import br.org.fju.rally.servico.UsuarioAcesso;
+import br.org.fju.rally.servico.UsuarioAcessoService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,6 +20,7 @@ import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +34,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/autenticacao")
@@ -37,12 +43,17 @@ public class AutenticacaoController {
 
     private final ContaAcessoService contas;
     private final AcessoService acesso;
+    private final UsuarioAcessoService usuarios;
+    private final TokenJwtService tokens;
     private final boolean modoDemonstracao;
 
     public AutenticacaoController(ContaAcessoService contas, AcessoService acesso,
+            UsuarioAcessoService usuarios, TokenJwtService tokens,
             @Value("${rally.autenticacao.modo-demonstracao:true}") boolean modoDemonstracao) {
         this.contas = contas;
         this.acesso = acesso;
+        this.usuarios = usuarios;
+        this.tokens = tokens;
         this.modoDemonstracao = modoDemonstracao;
     }
 
@@ -55,19 +66,49 @@ public class AutenticacaoController {
 
     @GetMapping("/sessao")
     public RespostaSessao sessao(Authentication autenticacao) {
-        if (modoDemonstracao) return new RespostaSessao(true, null, "Demonstração", "DEMONSTRACAO", true);
+        if (modoDemonstracao) {
+            return new RespostaSessao(true, null, "Demonstração", "DEMONSTRACAO", true,
+                    PapelUsuario.ASSISTENTE, null, null, null);
+        }
         if (autenticacao == null || !autenticacao.isAuthenticated() || autenticacao instanceof AnonymousAuthenticationToken) {
-            return new RespostaSessao(false, null, null, null, false);
+            return new RespostaSessao(false, null, null, null, false, null, null, null, null);
         }
         if (autenticacao instanceof OAuth2AuthenticationToken oauth) {
-            return new RespostaSessao(true, oauth.getPrincipal().getAttribute("email"),
-                    oauth.getPrincipal().getAttribute("name"), "GOOGLE",
-                    Boolean.TRUE.equals(oauth.getPrincipal().getAttribute("email_verified")));
+            String email = oauth.getPrincipal().getAttribute("email");
+            boolean verificado = Boolean.TRUE.equals(oauth.getPrincipal().getAttribute("email_verified"));
+            String googleSubject = oauth.getPrincipal().getAttribute("sub");
+            UsuarioAcesso usuario = usuarios.autenticarGoogle(email, verificado, googleSubject);
+            return resposta(usuario, oauth.getPrincipal().getAttribute("name"), "GOOGLE", true,
+                    tokens.emitir(usuario, "GOOGLE", googleSubject));
         }
         if (autenticacao.getPrincipal() instanceof UsuarioLocalPrincipal usuario) {
-            return new RespostaSessao(true, usuario.email(), usuario.email(), "LOCAL", true);
+            UsuarioAcesso perfilAtual = usuarios.buscarPorId(usuario.usuario().id());
+            if (perfilAtual == null) {
+                return new RespostaSessao(false, null, null, null, false, null, null, null, null);
+            }
+            return resposta(perfilAtual, usuario.email(), "LOCAL", true,
+                    tokens.emitir(perfilAtual, "LOCAL", null));
         }
-        return new RespostaSessao(false, null, null, null, false);
+        if (autenticacao instanceof JwtAuthenticationToken jwt) {
+            PapelUsuario role = PapelUsuario.valueOf(jwt.getToken().getClaimAsString("role"));
+            UUID tribeId = uuid(jwt.getToken().getClaimAsString("tribe_id"));
+            UUID nationId = uuid(jwt.getToken().getClaimAsString("nation_id"));
+            return new RespostaSessao(true, jwt.getToken().getClaimAsString("email"),
+                    jwt.getToken().getClaimAsString("name"), jwt.getToken().getClaimAsString("provider"),
+                    Boolean.TRUE.equals(jwt.getToken().getClaim("email_verified")), role, tribeId,
+                    nationId, jwt.getToken().getTokenValue());
+        }
+        return new RespostaSessao(false, null, null, null, false, null, null, null, null);
+    }
+
+    private RespostaSessao resposta(UsuarioAcesso usuario, String nome, String provedor,
+            boolean emailVerificado, String token) {
+        return new RespostaSessao(true, usuario.email(), nome == null ? usuario.email() : nome, provedor,
+                emailVerificado, usuario.papel(), usuario.triboId(), usuario.nacaoId(), token);
+    }
+
+    private static UUID uuid(String valor) {
+        return valor == null || valor.isBlank() ? null : UUID.fromString(valor);
     }
 
     @PostMapping("/login")
@@ -116,10 +157,6 @@ public class AutenticacaoController {
     @PutMapping("/senha")
     public ResponseEntity<Void> definirSenha(@Valid @RequestBody RequisicaoDefinirSenha corpo,
             Authentication autenticacao) {
-        if (!(autenticacao instanceof OAuth2AuthenticationToken)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Use uma conta Google verificada para criar, redefinir ou desbloquear a senha local.");
-        }
         String email = acesso.emailAssistenteVerificada(autenticacao);
         if (email == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,

@@ -13,6 +13,9 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 import java.util.*;
@@ -45,7 +48,12 @@ class FormulariosControllerTest {
 
     @Test
     void coordenadorNaoPodeCriarFormulario() {
-        var req = new MockHttpServletRequest(); req.addHeader("X-Papel", "COORDENADOR");
+        var req = new MockHttpServletRequest();
+        var token = Jwt.withTokenValue("token").header("alg", "HS256")
+            .subject(UUID.randomUUID().toString()).claim("role", "COORDENADOR_TRIBO")
+            .claim("tribe_id", tribo.toString()).build();
+        req.setUserPrincipal(new JwtAuthenticationToken(token,
+            List.of(new SimpleGrantedAuthority("ROLE_COORDENADOR_TRIBO"))));
         assertThatThrownBy(() -> controller.criar(new FormulariosController.Definicao(missao, "Teste", "", List.of()), req))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("assistentes");
         verifyNoInteractions(banco);

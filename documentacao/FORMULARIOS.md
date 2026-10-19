@@ -35,9 +35,9 @@ Formulários publicados anteriormente continuam disponíveis. Os que já tinham 
 
 ## Acesso administrativo
 
-No modo de produção, criar, listar e desativar formulários, ler respostas e visualizar fotos exigem login Google com e-mail verificado presente em `RALLY_ASSISTENTES` (endereços separados por vírgula). A lista vazia bloqueia essas operações. Cabeçalhos `X-Papel` não concedem acesso à administração de formulários em produção. Configure as credenciais Google, o perfil `producao` e essa lista de assistentes no backend.
+No modo de produção, criar, listar e desativar formulários, ler respostas e visualizar fotos exigem role `ASSISTENTE` ou `ADMINISTRADOR_SISTEMA`. A role vem do registro de usuário e do JWT; headers enviados pelo cliente não definem o papel nem o escopo. Configure as credenciais Google, o perfil `producao` e os usuários autorizados no backend.
 
-O ambiente demonstrativo existente libera autenticação e usa os perfis simulados do painel. Essa configuração é destinada ao desenvolvimento local. Os demais endpoints antigos conservam seu mecanismo de perfis existente.
+O ambiente demonstrativo libera autenticação e permite o uso local sem conta. Essa configuração é destinada ao desenvolvimento; as roles do painel em produção são verificadas pelo servidor.
 
 ## Verificações automatizadas
 

@@ -40,8 +40,8 @@ public class RelatorioService {
     public List<RespostaRelatorio> listar(HttpServletRequest requisicao) {
         return relatorioRepositorio.buscarComReferencias().stream()
                 .filter(relatorio -> acessoService.ehAssistente(requisicao)
-                        || requisicao.getHeader("X-Tribo-Id") != null
-                        && requisicao.getHeader("X-Tribo-Id").equals(relatorio.getTribo().getId().toString()))
+                        || requisicao.getHeader("X-Tribe-Id") != null
+                        && requisicao.getHeader("X-Tribe-Id").equals(relatorio.getTribo().getId().toString()))
                 .map(RespostaRelatorio::de)
                 .toList();
     }

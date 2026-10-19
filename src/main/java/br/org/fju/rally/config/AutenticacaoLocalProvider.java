@@ -1,6 +1,7 @@
 package br.org.fju.rally.config;
 
 import br.org.fju.rally.servico.ContaAcessoService;
+import br.org.fju.rally.servico.UsuarioAcesso;
 import br.org.fju.rally.servico.UsuarioLocalPrincipal;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.LockedException;
@@ -27,7 +28,11 @@ public class AutenticacaoLocalProvider implements AuthenticationProvider {
             throw new BadCredentialsException("E-mail ou senha incorretos.");
         }
 
-        UsuarioLocalPrincipal principal = new UsuarioLocalPrincipal(resultado.email());
+        UsuarioAcesso usuario = contas.usuario(resultado.email());
+        if (usuario == null) {
+            throw new BadCredentialsException("E-mail ou senha incorretos.");
+        }
+        UsuarioLocalPrincipal principal = new UsuarioLocalPrincipal(usuario);
         return UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
     }
 

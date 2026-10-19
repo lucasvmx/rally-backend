@@ -13,13 +13,13 @@ import java.util.Locale;
 public class ContaAcessoService {
     private final JdbcTemplate banco;
     private final PasswordEncoder codificador;
-    private final AcessoService acesso;
+    private final UsuarioAcessoService usuarios;
     private final String hashInutil;
 
-    public ContaAcessoService(JdbcTemplate banco, PasswordEncoder codificador, AcessoService acesso) {
+    public ContaAcessoService(JdbcTemplate banco, PasswordEncoder codificador, UsuarioAcessoService usuarios) {
         this.banco = banco;
         this.codificador = codificador;
-        this.acesso = acesso;
+        this.usuarios = usuarios;
         this.hashInutil = codificador.encode("senha-inutil-para-tempo-de-resposta");
     }
 
@@ -36,7 +36,7 @@ public class ContaAcessoService {
                 "SELECT senha_hash, tentativas_falhas, bloqueada_em IS NOT NULL FROM contas_acesso WHERE email = ? FOR UPDATE",
                 (rs, linha) -> new Conta(rs.getString(1), rs.getInt(2), rs.getBoolean(3)), email);
 
-        if (encontradas.isEmpty() || !acesso.assistenteAutorizada(email)) {
+        if (encontradas.isEmpty() || usuarios.buscarPorEmail(email) == null) {
             codificador.matches(senha, hashInutil);
             return new ResultadoLogin(EstadoLogin.FALHA, null);
         }
@@ -60,7 +60,7 @@ public class ContaAcessoService {
     @Transactional
     public void definirSenha(String emailInformado, String senha) {
         String email = normalizar(emailInformado);
-        if (!acesso.assistenteAutorizada(email)) {
+        if (usuarios.buscarPorEmail(email) == null) {
             throw new IllegalArgumentException("Esta conta não está autorizada a acessar o painel.");
         }
         if (senha.getBytes(StandardCharsets.UTF_8).length > 72) {
@@ -77,5 +77,9 @@ public class ContaAcessoService {
 
     public static String normalizar(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    public UsuarioAcesso usuario(String email) {
+        return usuarios.buscarPorEmail(email);
     }
 }

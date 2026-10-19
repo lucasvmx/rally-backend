@@ -24,7 +24,11 @@ rally:
     origem-frontend: ${RALLY_FRONTEND_ORIGIN:https://rallydastribos.sytes.net}
   autenticacao:
     assistentes: ${RALLY_ASSISTENTES:}
+    administradores-sistema: ${RALLY_ADMINISTRADORES_SISTEMA:}
     modo-demonstracao: ${RALLY_MODO_DEMONSTRACAO:true}
+    jwt-segredo: ${RALLY_JWT_SECRET:cmFsbHktZGV2LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tMzI=}
+    jwt-emissor: ${RALLY_JWT_ISSUER:rally}
+    jwt-audiencia: ${RALLY_JWT_AUDIENCE:rally-api}
   openrouter:
     endereco: ${OPENROUTER_ENDERECO:https://openrouter.ai/api/v1}
     chave: ${OPENROUTER_API_KEY:}
