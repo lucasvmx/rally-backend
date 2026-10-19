@@ -53,7 +53,7 @@ public class RelatorioService {
 
     @Transactional
     public RespostaRelatorio criar(RequisicaoRelatorio corpo, HttpServletRequest requisicao) {
-        AcessoService.ContextoAcesso acesso = acessoService.exigirCoordenador(requisicao, corpo.triboId());
+        AcessoService.ContextoAcesso acesso = acessoService.exigirCoordenador(requisicao);
         Tribo tribo = triboRepositorio.findById(corpo.triboId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
         if (!acesso.podeAcessarTribo(tribo.getId(), tribo.getNacao().getId())) {

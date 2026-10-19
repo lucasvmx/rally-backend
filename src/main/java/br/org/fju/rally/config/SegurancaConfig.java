@@ -46,7 +46,6 @@ public class SegurancaConfig {
     @Bean
     SecurityFilterChain cadeiaDeSeguranca(
             HttpSecurity http,
-            @Value("${rally.autenticacao.modo-demonstracao:true}") boolean modoDemonstracao,
             AutenticacaoLocalProvider autenticacaoLocal,
             OAuth2UserService<OidcUserRequest, OidcUser> usuarioGoogle,
             Converter<Jwt, ? extends AbstractAuthenticationToken> autenticacaoJwt
@@ -70,17 +69,14 @@ public class SegurancaConfig {
                 }))
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
 
-        if (modoDemonstracao) {
-            http.authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
-        } else {
-            http.authorizeHttpRequests(auth -> auth
-                    .requestMatchers(HttpMethod.GET,
-                            "/api/v1/autenticacao/csrf",
-                            "/api/v1/autenticacao/sessao",
-                            "/api/v1/autenticacao/senha/google").permitAll()
-                    .requestMatchers(HttpMethod.POST, "/api/v1/autenticacao/login").permitAll()
-                    .requestMatchers("/api/v1/publico/formularios/**", "/api/v1/saude", "/oauth2/**", "/login/**").permitAll()
-                    .anyRequest().hasAnyRole("ASSISTENTE", "COORDENADOR_TRIBO", "COORDENADOR_NACAO", "ADMINISTRADOR_SISTEMA"))
+        http.authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/autenticacao/csrf",
+                                "/api/v1/autenticacao/sessao",
+                                "/api/v1/autenticacao/senha/google").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/autenticacao/login").permitAll()
+                        .requestMatchers("/api/v1/publico/formularios/**", "/api/v1/saude", "/oauth2/**", "/login/**").permitAll()
+                        .anyRequest().hasAnyRole("ASSISTENTE", "COORDENADOR_TRIBO", "COORDENADOR_NACAO", "ADMINISTRADOR_SISTEMA"))
                 .oauth2Login(login -> login
                         .userInfoEndpoint(userInfo -> userInfo.oidcUserService(usuarioGoogle))
                         .successHandler((requisicao, resposta, autenticacao) -> {
@@ -92,7 +88,6 @@ public class SegurancaConfig {
                         })
                         .failureHandler((requisicao, resposta, excecao) -> resposta.sendRedirect("/entrar?erro_google=1")))
                 .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(autenticacaoJwt)));
-        }
 
         return http.build();
     }

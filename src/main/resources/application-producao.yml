@@ -14,7 +14,6 @@ spring:
 
 rally:
   autenticacao:
-    modo-demonstracao: false
     jwt-segredo: ${RALLY_JWT_SECRET}
 
 server:

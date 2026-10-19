@@ -25,7 +25,6 @@ rally:
   autenticacao:
     assistentes: ${RALLY_ASSISTENTES:}
     administradores-sistema: ${RALLY_ADMINISTRADORES_SISTEMA:}
-    modo-demonstracao: ${RALLY_MODO_DEMONSTRACAO:true}
     jwt-segredo: ${RALLY_JWT_SECRET:cmFsbHktZGV2LWtleS1ub3QtZm9yLXByb2R1Y3Rpb24tMzI=}
     jwt-emissor: ${RALLY_JWT_ISSUER:rally}
     jwt-audiencia: ${RALLY_JWT_AUDIENCE:rally-api}

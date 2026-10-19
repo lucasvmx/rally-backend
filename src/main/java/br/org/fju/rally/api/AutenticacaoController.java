@@ -12,7 +12,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -45,16 +44,13 @@ public class AutenticacaoController {
     private final AcessoService acesso;
     private final UsuarioAcessoService usuarios;
     private final TokenJwtService tokens;
-    private final boolean modoDemonstracao;
 
     public AutenticacaoController(ContaAcessoService contas, AcessoService acesso,
-            UsuarioAcessoService usuarios, TokenJwtService tokens,
-            @Value("${rally.autenticacao.modo-demonstracao:true}") boolean modoDemonstracao) {
+            UsuarioAcessoService usuarios, TokenJwtService tokens) {
         this.contas = contas;
         this.acesso = acesso;
         this.usuarios = usuarios;
         this.tokens = tokens;
-        this.modoDemonstracao = modoDemonstracao;
     }
 
     @GetMapping("/csrf")
@@ -66,10 +62,6 @@ public class AutenticacaoController {
 
     @GetMapping("/sessao")
     public RespostaSessao sessao(Authentication autenticacao) {
-        if (modoDemonstracao) {
-            return new RespostaSessao(true, null, "Demonstração", "DEMONSTRACAO", true,
-                    PapelUsuario.ASSISTENTE, null, null, null);
-        }
         if (autenticacao == null || !autenticacao.isAuthenticated() || autenticacao instanceof AnonymousAuthenticationToken) {
             return new RespostaSessao(false, null, null, null, false, null, null, null, null);
         }
@@ -138,10 +130,6 @@ public class AutenticacaoController {
 
     @GetMapping("/senha/google")
     public void iniciarDefinicaoDeSenha(HttpServletRequest requisicao, HttpServletResponse resposta) throws IOException {
-        if (modoDemonstracao) {
-            resposta.sendRedirect("/");
-            return;
-        }
         requisicao.getSession(true).setAttribute(DESTINO_DEFINIR_SENHA, true);
         resposta.sendRedirect("/oauth2/authorization/google");
     }

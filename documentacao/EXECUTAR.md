@@ -33,8 +33,6 @@ No primeiro acesso, uma assistente pode escolher **Defina uma senha com o Google
 
 Após três tentativas locais incorretas, a conta fica bloqueada. Para recuperar o acesso, use novamente o fluxo Google verificado para redefinir a senha; essa ação também remove o bloqueio. Não há cadastro público. Formulários de envio público continuam sem exigir login.
 
-No modo de demonstração, o painel entra automaticamente e o fluxo de login local não é usado.
-
 A imagem de produção usa Java 25. O perfil nativo usa GraalVM 25 e deve ser executado em ambiente com suporte ao compilador Native Image.
 
 ## Google Drive

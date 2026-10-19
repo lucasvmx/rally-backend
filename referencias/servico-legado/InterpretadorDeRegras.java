@@ -41,7 +41,7 @@ public class InterpretadorDeRegras {
             try {
                 return chamarOpenRouter(texto);
             } catch (RuntimeException ignored) {
-                // A regra continua disponível em modo demonstrativo quando a IA não responde.
+                // A sugestão local continua disponível quando a IA não responde.
             }
         }
         return interpretarLocalmente(texto);
@@ -100,7 +100,7 @@ public class InterpretadorDeRegras {
         } else {
             regra.put("pontos_por_pessoa", 0);
         }
-        regra.put("ambiguidades", List.of("Modo demonstrativo: confirme nome, datas, prazo e bônus antes de publicar."));
-        return new RespostaInterpretacao("MODO_DEMONSTRACAO", "A IA não está configurada; foi gerada uma sugestão local para demonstração.", texto, List.of(regra), List.of("Configure OPENROUTER_API_KEY para ativar a interpretação pelo OpenRouter."));
+        regra.put("ambiguidades", List.of("Sugestão local: confirme nome, datas, prazo e bônus antes de publicar."));
+        return new RespostaInterpretacao("FALLBACK_LOCAL", "A IA não está configurada; foi gerada uma sugestão local que deve ser revisada.", texto, List.of(regra), List.of("Configure OPENROUTER_API_KEY para ativar a interpretação pelo OpenRouter."));
     }
 }

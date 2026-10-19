@@ -35,9 +35,7 @@ Formulários publicados anteriormente continuam disponíveis. Os que já tinham 
 
 ## Acesso administrativo
 
-No modo de produção, criar, listar e desativar formulários, ler respostas e visualizar fotos exigem role `ASSISTENTE` ou `ADMINISTRADOR_SISTEMA`. A role vem do registro de usuário e do JWT; headers enviados pelo cliente não definem o papel nem o escopo. Configure as credenciais Google, o perfil `producao` e os usuários autorizados no backend.
-
-O ambiente demonstrativo libera autenticação e permite o uso local sem conta. Essa configuração é destinada ao desenvolvimento; as roles do painel em produção são verificadas pelo servidor.
+Criar, listar e desativar formulários, ler respostas e visualizar fotos exigem role `ASSISTENTE` ou `ADMINISTRADOR_SISTEMA`. A role vem do registro de usuário e do JWT; headers enviados pelo cliente não definem o papel nem o escopo. Configure as credenciais Google, o perfil `producao` e os usuários autorizados no backend.
 
 ## Verificações automatizadas
 

@@ -1,7 +1,6 @@
 package br.org.fju.rally.servico;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -23,16 +22,17 @@ class AcessoServiceTest {
     private final AcessoService servico = new AcessoService();
 
     @Test
-    void formularioEmProducaoNaoAceitaPapelForjado() {
-        ReflectionTestUtils.setField(servico, "modoDemonstracao", false);
+    void requestAnonimaNaoRecebeAcessoDeAssistente() {
         var req = new MockHttpServletRequest();
-        assertThatThrownBy(() -> servico.exigirAdministracaoFormularios(req)).isInstanceOf(ResponseStatusException.class);
+        assertThatThrownBy(() -> servico.exigirAdministracaoFormularios(req))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Autenticação necessária");
     }
+
     @Test
-    void formularioEmProducaoExigePapelDeAssistenteNoUsuarioProvisionado() {
+    void formularioExigePapelDeAssistenteNoUsuarioProvisionado() {
         var usuarios = mock(UsuarioAcessoService.class);
         var acessoGoogle = new AcessoService(usuarios);
-        ReflectionTestUtils.setField(acessoGoogle, "modoDemonstracao", false);
         var req = new MockHttpServletRequest();
         var autoridades = List.of(new SimpleGrantedAuthority("ROLE_USER"));
         var atributos = Map.<String, Object>of("email", "assistente@example.org", "email_verified", true, "sub", "google-sub");
@@ -47,6 +47,7 @@ class AcessoServiceTest {
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
         assertThatThrownBy(() -> acessoGoogle.exigirAdministracaoFormularios(req)).isInstanceOf(ResponseStatusException.class);
     }
+
     @Test
     void coordenadorRecebeSomenteSuaTribo() {
         UUID triboId = UUID.randomUUID();
@@ -67,6 +68,15 @@ class AcessoServiceTest {
         assertThatThrownBy(() -> servico.exigirCoordenador(requisicao))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("coordenadores");
+    }
+
+    @Test
+    void requestAnonimaNaoRecebePapelDeCoordenador() {
+        MockHttpServletRequest requisicao = new MockHttpServletRequest();
+
+        assertThatThrownBy(() -> servico.exigirCoordenador(requisicao))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Autenticação necessária");
     }
 
     private static JwtAuthenticationToken jwt(String role, UUID tribeId) {

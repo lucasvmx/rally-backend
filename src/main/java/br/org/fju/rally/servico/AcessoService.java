@@ -2,7 +2,6 @@ package br.org.fju.rally.servico;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -17,9 +16,6 @@ import java.util.UUID;
 @Service
 public class AcessoService {
     private final UsuarioAcessoService usuarios;
-
-    @Value("${rally.autenticacao.modo-demonstracao:true}")
-    private boolean modoDemonstracao = true;
 
     @Autowired
     public AcessoService(UsuarioAcessoService usuarios) {
@@ -61,10 +57,6 @@ public class AcessoService {
 
     public ContextoAcesso contexto(HttpServletRequest requisicao) {
         Authentication autenticacao = requisicao.getUserPrincipal() instanceof Authentication atual ? atual : null;
-        if ((autenticacao == null || !autenticacao.isAuthenticated()
-                || autenticacao instanceof AnonymousAuthenticationToken) && modoDemonstracao) {
-            return new ContextoAcesso(PapelUsuario.ASSISTENTE, null, null);
-        }
         if (autenticacao == null || !autenticacao.isAuthenticated()
                 || autenticacao instanceof AnonymousAuthenticationToken) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Autenticação necessária.");
@@ -112,15 +104,6 @@ public class AcessoService {
                     "Apenas coordenadores de tribo ou nação podem enviar este relatório.");
         }
         return contexto;
-    }
-
-    public ContextoAcesso exigirCoordenador(HttpServletRequest requisicao, UUID triboDemoId) {
-        Authentication autenticacao = requisicao.getUserPrincipal() instanceof Authentication atual ? atual : null;
-        if (modoDemonstracao && (autenticacao == null || !autenticacao.isAuthenticated()
-                || autenticacao instanceof AnonymousAuthenticationToken)) {
-            return new ContextoAcesso(PapelUsuario.COORDENADOR_TRIBO, triboDemoId, null);
-        }
-        return exigirCoordenador(requisicao);
     }
 
     private ContextoAcesso contextoJwt(Jwt jwt) {
