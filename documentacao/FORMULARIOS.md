@@ -7,19 +7,18 @@ Na aplicação, abra **Administração → Formulários**. Crie um link com um n
 Quem abre o link informa:
 
 - Nação e tribo. A tribo disponível é filtrada pela nação escolhida.
-- Missão referente àquele relatório.
-- Uma foto dos integrantes. O envio exige exatamente uma foto JPEG, PNG ou WebP de até 5 MB.
-- Nomes dos integrantes, um por linha.
-- Nomes das pessoas novas ou afastadas, um por linha. Se não houver ninguém, deve-se escrever “Nenhum”.
-- Nome de quem preencheu.
+- Missão da semana e nome de quem preencheu.
+- Uma foto de comprovação dos integrantes. O envio exige exatamente uma foto JPEG, PNG ou WebP de até 5 MB.
+- Nomes dos integrantes que aparecem na foto, um por linha.
+- Nomes dos jovens novos que aparecem na foto, um por linha. Se não houver ninguém, deve-se escrever “Nenhum”.
 
-A quantidade de integrantes e de pessoas novas ou afastadas é calculada pelas linhas com nomes e enviada ao relatório para manter a pontuação existente. Linhas vazias e o texto “Nenhum” não entram na contagem. Cada lista aceita até 200 nomes. O servidor confere as quantidades e valida que a tribo pertence à nação selecionada.
+A quantidade de integrantes e de jovens novos é calculada pelas linhas com nomes e enviada ao relatório para manter a pontuação existente. Linhas vazias e o texto “Nenhum” não entram na contagem. Cada lista aceita até 200 nomes. O servidor confere as quantidades e valida que a tribo pertence à nação selecionada.
 
 ## Link público
 
-O endereço é `/enviar-relatorio/<segredo>`. O backend gera um segredo criptográfico de 256 bits (64 caracteres hexadecimais), independente do identificador do formulário. O link permite abrir a página, mas o envio exige uma sessão autenticada de coordenador de tribo ou de nação. O backend confere se a tribo escolhida está no escopo do coordenador. Assistentes e administradores podem consultar respostas e fotos, mas não enviar relatórios.
+O endereço é `/enviar-relatorio/<segredo>`. O backend gera um segredo criptográfico de 256 bits (64 caracteres hexadecimais), independente do identificador do formulário. Qualquer pessoa com o link pode abrir e preencher o formulário. Para enviar, é necessário entrar com uma conta de coordenador de tribo ou de nação; o backend confere se a tribo escolhida está no escopo do coordenador. Assistentes e administradores podem consultar respostas e fotos, mas não enviar relatórios.
 
-A consulta pública do formulário não exige login e não expõe a lista de relatórios nem a revisão administrativa. O envio exige login como coordenador. Links inexistentes e desativados recebem a mesma resposta 404. A desativação impede novas consultas e novos envios, inclusive quando alguém já havia aberto o formulário.
+A consulta pública do formulário não exige login e não expõe a lista de relatórios nem a revisão administrativa. A lista de tribos mostra somente tribos ativas e é filtrada pela nação escolhida. O envio exige login como coordenador. Links inexistentes e desativados recebem a mesma resposta 404. A desativação impede novas consultas e novos envios, inclusive quando alguém já havia aberto o formulário.
 
 Os dados do formulário e as respostas não são armazenados no cache offline. A tela pública informa aos mecanismos de busca que não deve ser indexada e desabilita o envio do endereço como referência.
 

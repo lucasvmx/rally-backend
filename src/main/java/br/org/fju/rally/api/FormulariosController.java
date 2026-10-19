@@ -116,7 +116,7 @@ public class FormulariosController {
                 .map(br.org.fju.rally.dominio.Missao::isExigeFoto).orElse(true);
         return Map.of("definicao", form.definicao(),
             "nacoes", nacoes.findAll().stream().map(RespostaNacao::de).toList(),
-            "tribos", tribos.buscarTodasComNacao().stream().map(RespostaTribo::de).toList(),
+            "tribos", tribos.buscarTodasComNacao().stream().filter(Tribo::isAtiva).map(RespostaTribo::de).toList(),
             "missoes", missoesDoFormulario,
             "exige_foto", exigeFoto);
     }
