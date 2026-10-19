@@ -21,6 +21,10 @@ tags:
   - name: Autenticação
   - name: Saúde
   - name: Dados do Rally
+    description: >-
+      Missões pertencem a um rally com período próprio. O placar considera os
+      relatórios aprovados do rally que contém a data atual em America/Sao_Paulo;
+      quando não há rally ativo, o placar retorna as tribos sem pontos.
   - name: Relatórios
   - name: Regras
   - name: Formulários
@@ -316,8 +320,15 @@ paths:
       summary: Cria missões a partir de dados revisados
       description: >-
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Recebe de 1 a 100
-        missões validadas pelo cliente e cria todas na mesma operação. A data
-        de início não pode ser posterior à data de fim. link_google_forms é
+        missões e cria todas na mesma operação, vinculadas a um rally. O campo
+        rally pode definir nome, data_inicio e data_fim; se omitido, o servidor
+        cria um rally com o menor início e o maior fim das missões e nome gerado.
+        As datas das missões devem estar dentro do período do rally e a data de
+        início de cada missão não pode ser posterior à data de fim. As regras de
+        pontuação e campos do relatório podem ser definidos por missão; campos
+        podem pertencer ao escopo RELATORIO ou PESSOA, com RELATORIO como padrão.
+        Quando regras_pontuacao é omitido ou vazio, são convertidos os campos legados
+        de pontos em regras. link_google_forms é
         opcional; quando informado, deve ser um link HTTPS do Google Forms
         aceito pelo serviço (forms.gle/<caminho> ou
         docs.google.com/forms/<caminho>), sem porta explícita nem usuário na
@@ -343,6 +354,29 @@ paths:
                   $ref: '#/components/schemas/RespostaMissao'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+
+  /api/v1/rallies:
+    get:
+      tags: [Dados do Rally]
+      summary: Lista rallies cadastrados
+      description: >-
+        Inclui o indicador ativo calculado pela data atual em
+        America/Sao_Paulo. O intervalo de início e fim é inclusivo. O código
+        não impede períodos sobrepostos; se mais de um rally contiver a data,
+        o placar escolhe aquele com a data_inicio mais recente.
+      responses:
+        '200':
+          description: Rallies em ordem decrescente de data de início
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaRally'
         '401':
           $ref: '#/components/responses/NaoAutenticado'
         '403':
@@ -420,7 +454,26 @@ paths:
         Exige role COORDENADOR_TRIBO ou COORDENADOR_NACAO no contexto autenticado
         e permite criar relatório somente para tribo dentro do escopo de
         tribe_id ou nation_id da identidade. O escopo é lido do JWT enviado em
-        Authorization: Bearer ou da identidade Spring Security.
+        Authorization: Bearer ou da identidade Spring Security. O corpo aceita
+        pessoas e dados dinâmicos definidos pela missão. As chaves de dados
+        devem corresponder aos IDs de campos_relatorio do escopo RELATORIO, e
+        pessoas[].dados aos IDs do escopo PESSOA; campos não definidos para o
+        escopo são rejeitados e os requisitos dos campos são validados. A
+        categoria de cada pessoa deve ser INTEGRANTE, NOVO_AFASTADO ou
+        CONVIDADO, ou estar declarada em uma regra POR_PESSOA da missão. Se
+        uma das quantidades for maior que zero, as pessoas informadas devem
+        corresponder às quantidades e categorias; cada pessoa precisa de nome
+        e categoria. A comparação de nomes ignora diferenças de caixa e
+        normaliza espaços repetidos e nas extremidades, mas preserva acentos.
+        Um nome repetido após essa normalização é tratado como pessoa distinta
+        e gera um aviso. Como a identificação usa somente o nome, o serviço não
+        consegue distinguir homônimos de um reenvio da mesma pessoa. Relatórios
+        não possuem operação de edição: após o envio,
+        os dados não podem ser ajustados. Para missão que exige foto, use o
+        formulário multipart; esta rota JSON não recebe foto. A resposta de
+        relatório não inclui nomes de pessoas; os nomes enviados por formulário
+        ficam disponíveis apenas nas rotas protegidas de respostas de formulário
+        para ASSISTENTE e ADMINISTRADOR_SISTEMA.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -451,6 +504,8 @@ paths:
       summary: Aprova um relatório
       description: >-
         Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Somente relatórios no estado ENVIADO podem ser revisados; uma segunda
+        tentativa de aprovar ou rejeitar um relatório já revisado retorna 409.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -475,6 +530,12 @@ paths:
           $ref: '#/components/responses/AcessoNegado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O relatório já foi revisado e não pode ser alterado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/relatorios/{id}/rejeitar:
     post:
@@ -482,6 +543,8 @@ paths:
       summary: Rejeita um relatório
       description: >-
         Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Somente relatórios no estado ENVIADO podem ser revisados; uma segunda
+        tentativa de aprovar ou rejeitar um relatório já revisado retorna 409.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -506,24 +569,23 @@ paths:
           $ref: '#/components/responses/AcessoNegado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O relatório já foi revisado e não pode ser alterado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/relatorios/{id}/arquivos:
     post:
       tags: [Relatórios]
-      summary: Envia um arquivo para o Google Drive e o associa ao relatório
+      summary: Rota legada para anexar arquivo a um relatório
       description: >-
-        O arquivo não pode estar vazio. A operação exige acesso de ASSISTENTE
-        ou ADMINISTRADOR_SISTEMA, ou uma role de coordenador cujo escopo inclua
-        a tribo ou nação do relatório, além de uma sessão Google com autorização
-        para o Drive. Para autenticação por JWT, use Authorization: Bearer; o
-        token de usuário Google contém a referência necessária para localizar a
-        autorização OAuth do Drive. O limite configurado no Spring é 15 MB por
-        arquivo e 80 MB para a requisição multipart. No perfil de produção, o
-        cliente OAuth Google usa os escopos openid, profile, email e
-        https://www.googleapis.com/auth/drive.file. Se
-        GOOGLE_DRIVE_PASTA_CENTRAL estiver configurada, o upload usa essa pasta
-        como raiz; se estiver vazia, localiza ou cria a pasta Rally. Também é
-        necessária autorização Google para o Drive para concluir o envio.
+        A rota não anexa arquivos após o envio do relatório. Após confirmar que
+        o relatório existe e que a identidade tem acesso ao escopo da tribo, o
+        serviço responde 409 e orienta incluir a foto no envio inicial pelo
+        formulário. Para missões que exigem foto, o formulário aceita a imagem
+        como parte do envio multipart.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -538,30 +600,21 @@ paths:
                 arquivo:
                   type: string
                   format: binary
-                  description: Arquivo não vazio a enviar ao Google Drive.
+                  description: >-
+                    Parte multipart exigida pela assinatura atual da rota; o
+                    conteúdo não é anexado porque o serviço retorna 409 após
+                    validar a existência e o escopo do relatório.
       responses:
-        '200':
-          description: Identificador do arquivo no Google Drive
-          content:
-            text/plain:
-              schema:
-                type: string
-        '401':
-          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
-        '502':
-          description: O Google Drive não confirmou o envio
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Erro'
-        '503':
-          description: A sessão ou a integração com o Google Drive não está disponível
+        '409':
+          description: O relatório não aceita arquivos após o envio
           content:
             application/json:
               schema:
@@ -571,6 +624,11 @@ paths:
     get:
       tags: [Dados do Rally]
       summary: Gera o placar das tribos
+      description: >-
+        Usa somente relatórios aprovados vinculados ao rally ativo na data
+        atual de America/Sao_Paulo. Depois da data_fim ou na ausência de rally
+        ativo, as tribos são retornadas com pontuação zero. Em períodos
+        sobrepostos, usa o rally com data_inicio mais recente.
       responses:
         '200':
           description: Tribos classificadas por pontuação
@@ -582,11 +640,17 @@ paths:
                   $ref: '#/components/schemas/RespostaPlacar'
         '401':
           $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
 
   /api/v1/regras/interpretar:
     post:
       tags: [Regras]
       summary: Interpreta um texto de regras
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Quando a IA não está
+        configurada ou falha, o serviço retorna uma interpretação local para
+        revisão.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -694,16 +758,14 @@ paths:
       tags: [Formulários]
       summary: Cria um formulário público para receber relatórios do período
       description: >-
-        Um formulário é um link de coleta, normalmente mensal, e não fica
-        associado a uma missão. ASSISTENTE ou ADMINISTRADOR_SISTEMA pode criar
-        a definição com uma lista vazia de campos adicionais. Cada envio escolhe
-        a própria missão. IDs de campo devem ser únicos e não podem ser
-        nomes_integrantes, nomes_novos_afastados ou preenchido_por. Campo do tipo
-        selecao precisa conter pelo menos uma opção.
-        Novos requests omitem missao_id. Nas respostas de formulários novos,
-        o record inclui missao_id nulo; definições antigas ainda podem trazer
-        um UUID. O controller também tolera missao_id em um request de criação
-        legado, mas descarta o valor ao persistir um formulário novo.
+        ASSISTENTE ou ADMINISTRADOR_SISTEMA pode criar a definição com até 30
+        campos, incluindo uma lista vazia. missao_id é opcional; quando
+        informado, deve identificar uma missão existente. Formulários ligados
+        a missão são limitados a essa missão no envio público. Se a missão tiver
+        campos_relatorio, IDs, tipos e escopos dos campos do formulário devem
+        corresponder. IDs devem ser únicos e não podem ser nomes_integrantes,
+        nomes_novos_afastados ou preenchido_por. Campo do tipo selecao precisa
+        conter pelo menos uma opção.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -759,8 +821,11 @@ paths:
       responses:
         '200':
           description: >-
-            Definição do formulário, nações, tribos e missões disponíveis. O
-            requisito de foto é sempre exige_foto=true para este fluxo.
+            Definição do formulário, nações, tribos e missões disponíveis.
+            Se o formulário estiver vinculado a uma missão, exige_foto
+            corresponde à configuração dessa missão e missoes contém apenas
+            ela. Sem vínculo, missoes lista as missões e exige_foto retorna
+            true.
           content:
             application/json:
               schema:
@@ -779,21 +844,27 @@ paths:
         do escopo de tribo ou nação associado à identidade. A role e o escopo
         são lidos da sessão Spring Security ou do JWT Authorization: Bearer;
         cabeçalhos definidos pelo cliente não controlam a autorização.
-        A parte dados é JSON e deve incluir
-        relatorio, nacao_id, nomes_integrantes, nomes_novos_afastados,
-        preenchido_por e respostas adicionais. relatorio.missao_id é escolhido
-        neste envio, sem vínculo com a definição do formulário. As quantidades
-        em relatorio são contadas pelas linhas não vazias dos campos de nomes;
-        uma linha contendo apenas "nenhum" (sem diferenciar maiúsculas) também
-        não conta. As respostas adicionais devem usar IDs definidos no
+        A parte dados é JSON e deve incluir relatorio, nacao_id, preenchido_por
+        e respostas adicionais. relatorio.missao_id é escolhido neste envio.
+        Se a definição do formulário tiver missao_id, ele precisa corresponder
+        à missão escolhida. Quando usado o formato legado de listas de nomes,
+        as quantidades em relatorio devem corresponder às linhas não vazias;
+        uma linha contendo apenas "nenhum" (sem diferenciar maiúsculas) não
+        conta. Como alternativa, relatorio.pessoas pode trazer objetos com nome,
+        categoria e dados estruturados por ID; nesse caso, as quantidades devem
+        corresponder às categorias dessas pessoas. Se relatorio.pessoas for
+        omitido ou vazio, nomes_integrantes e nomes_novos_afastados são
+        necessários para gerar as pessoas com categorias padrão. Campos de
+        escopo RELATORIO vão em respostas e campos de escopo PESSOA vão em
+        relatorio.pessoas[].dados. As respostas devem usar IDs definidos no
         formulário, ter até 5.000 caracteres cada e respeitar os campos
         obrigatórios; valores do tipo numero devem ser decimais válidos e
         selecao deve corresponder a uma das opções definidas. Definições
-        legadas que ainda tenham missao_id continuam
-        restringindo os envios àquela missão.
-        nomes_integrantes, nomes_novos_afastados e preenchido_por são
-        obrigatórios. A parte arquivo é obrigatória e aceita uma única imagem
-        JPEG, PNG ou WebP de até 5 MiB (5.242.880 bytes). Os valores fixos de
+        podem conter até 30 campos adicionais. Após o envio, o relatório e as
+        respostas não podem ser editados.
+        preenchido_por é obrigatório. A parte arquivo é opcional quando a missão não exige
+        foto e obrigatória quando exige; aceita no máximo uma imagem JPEG,
+        PNG ou WebP de até 5 MiB (5.242.880 bytes). Os valores fixos de
         nomes e responsável
         são gravados também em respostas sob as chaves
         nomes_integrantes, nomes_novos_afastados e preenchido_por.
@@ -813,7 +884,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [dados, arquivo]
+              required: [dados]
               properties:
                 dados:
                   $ref: '#/components/schemas/EnvioFormulario'
@@ -821,9 +892,10 @@ paths:
                   type: string
                   format: binary
                   description: >-
-                    Uma única imagem obrigatória JPEG, PNG ou WebP, com até
-                    5 MiB (5.242.880 bytes). O conteúdo deve corresponder ao
-                    tipo informado.
+                    Opcional salvo quando a missão selecionada exige foto. Se
+                    enviada, deve ser uma única imagem JPEG, PNG ou WebP com
+                    até 5 MiB (5.242.880 bytes); o conteúdo precisa corresponder
+                    ao tipo informado.
             encoding:
               arquivo:
                 contentType: image/jpeg, image/png, image/webp
@@ -831,16 +903,11 @@ paths:
                 contentType: application/json
       responses:
         '200':
-          description: Resposta registrada e identificador do relatório criado
+          description: Relatório criado, com avisos de nomes repetidos quando aplicável
           content:
             application/json:
               schema:
-                type: object
-                required: [id]
-                properties:
-                  id:
-                    type: string
-                    format: uuid
+                $ref: '#/components/schemas/RespostaEnvioFormulario'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '401':
@@ -1194,6 +1261,10 @@ components:
         - link_google_forms
         - status
         - versao
+        - rally_id
+        - rally_nome
+        - regras_pontuacao
+        - campos_relatorio
       properties:
         id:
           type: string
@@ -1236,6 +1307,82 @@ components:
           type: string
         versao:
           type: integer
+        rally_id:
+          type: string
+          format: uuid
+          nullable: true
+        rally_nome:
+          type: string
+          nullable: true
+        regras_pontuacao:
+          type: array
+          description: Regras normalizadas armazenadas para esta missão.
+          items:
+            $ref: '#/components/schemas/RegraPontuacao'
+        campos_relatorio:
+          type: array
+          description: Campos adicionais esperados no relatório da missão.
+          items:
+            $ref: '#/components/schemas/CampoRelatorioMissao'
+    RespostaRally:
+      type: object
+      required: [id, nome, data_inicio, data_fim, ativo]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        ativo:
+          type: boolean
+          description: >-
+            true quando a data atual em America/Sao_Paulo estiver entre
+            data_inicio e data_fim, inclusive.
+    DadosRally:
+      type: object
+      required: [nome, data_inicio, data_fim]
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 180
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+    CampoRelatorioMissao:
+      type: object
+      description: >-
+        O serviço valida que id, titulo e tipo sejam textos não vazios, que id
+        seja único na missão e que tipo seja um dos valores listados. Campos
+        podem pertencer ao escopo RELATORIO ou PESSOA; o padrão é RELATORIO.
+        O identificador categoria não pode ser usado como campo PESSOA.
+        Campos opcionais adicionais podem ser preservados como dados JSON.
+      required: [id, titulo, tipo]
+      properties:
+        id:
+          type: string
+        titulo:
+          type: string
+        tipo:
+          type: string
+          enum: [texto, paragrafo, numero, selecao]
+          description: >-
+            Para qualquer campo do tipo numero, em qualquer escopo, o valor
+            informado deve estar entre 0 e 1.000.000, inclusive.
+        escopo:
+          type: string
+          enum: [RELATORIO, PESSOA]
+          default: RELATORIO
+      additionalProperties: true
     RequisicaoRelatorio:
       type: object
       required: [missao_id, tribo_id]
@@ -1249,14 +1396,78 @@ components:
         quantidade_pessoas:
           type: integer
           minimum: 0
-          default: 0
+          maximum: 200
+          description: Deve corresponder ao número de pessoas de categoria integrante (ou outra categoria não classificada como nova/afastada).
         quantidade_novos_afastados:
           type: integer
           minimum: 0
-          default: 0
+          maximum: 200
+          description: Deve corresponder às pessoas cuja categoria é NOVO_AFASTADO, começa com NOVO_ ou começa com AFASTADO_.
         observacoes:
           type: string
           nullable: true
+        pessoas:
+          type: array
+          maxItems: 400
+          description: >-
+            Lista de pessoas considerada na pontuação. Quando qualquer
+            quantidade for maior que zero, a lista é obrigatória e deve
+            corresponder às quantidades por categoria. A comparação de nomes
+            ignora caixa e normaliza espaços repetidos e nas extremidades, mas
+            preserva acentos. Nomes repetidos após essa normalização são
+            mantidos como pessoas distintas e geram aviso; a API não consegue
+            identificar homônimos ou reenvios usando só nome.
+          items:
+            $ref: '#/components/schemas/PessoaRelatorio'
+        dados:
+          allOf:
+            - $ref: '#/components/schemas/DadosDinamicosRelatorio'
+          description: >-
+            Na criação do relatório, as chaves devem ser IDs dos campos
+            campos_relatorio com escopo RELATORIO; campos não definidos nesse
+            escopo são rejeitados.
+    PessoaRelatorio:
+      type: object
+      required: [nome, categoria]
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 200
+        categoria:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: >-
+            Espaços e hífens viram `_`, e o valor é normalizado para maiúsculas.
+            Aceita as categorias padrão INTEGRANTE, NOVO_AFASTADO e CONVIDADO,
+            ou uma categoria declarada em uma regra POR_PESSOA da missão.
+            JOVEM_FIRME é normalizada para INTEGRANTE; NOVO e AFASTADO são
+            normalizados para NOVO_AFASTADO. Categorias com prefixo NOVO_ ou
+            AFASTADO_ contam como novos/afastados.
+        dados:
+          allOf:
+            - $ref: '#/components/schemas/DadosDinamicosRelatorio'
+          description: >-
+            Na criação do relatório, as chaves devem ser IDs dos campos
+            campos_relatorio com escopo PESSOA; campos não definidos nesse
+            escopo são rejeitados.
+    DadosDinamicosRelatorio:
+      type: object
+      maxProperties: 50
+      description: >-
+        Valores simples usados pelas condições e métricas de pontuação. Chaves
+        têm até 80 caracteres e valores de texto até 5.000 caracteres. Ao criar
+        um relatório, as chaves precisam corresponder a campos_relatorio no
+        escopo do mapa (RELATORIO ou PESSOA); IDs desconhecidos são rejeitados.
+        Respostas a campos do tipo numero aceitam somente valores entre 0 e
+        1.000.000, inclusive, tanto no escopo RELATORIO quanto PESSOA.
+      additionalProperties:
+        oneOf:
+          - type: string
+            maxLength: 5000
+          - type: number
+          - type: boolean
     RespostaRelatorio:
       type: object
       required:
@@ -1274,6 +1485,7 @@ components:
         - status
         - pontos_aprovados
         - justificativa_revisao
+        - avisos
       properties:
         id:
           type: string
@@ -1304,11 +1516,25 @@ components:
           type: boolean
         status:
           type: string
+          enum: [ENVIADO, APROVADO, REJEITADO]
         pontos_aprovados:
           type: integer
         justificativa_revisao:
           type: string
           nullable: true
+        avisos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvisoRelatorio'
+    AvisoRelatorio:
+      type: object
+      required: [codigo, mensagem]
+      properties:
+        codigo:
+          type: string
+          example: NOME_REPETIDO_NA_MISSAO
+        mensagem:
+          type: string
     RequisicaoRevisao:
       type: object
       properties:
@@ -1355,12 +1581,6 @@ components:
         - nome
         - data_inicio
         - data_fim
-        - pontos_por_pessoa
-        - pontos_por_novo_afastado
-        - bonificacao_a_cada_cinco_novos
-        - meta_nacional
-        - bonificacao_meta_nacional
-        - tipo_pessoa
       properties:
         nome:
           type: string
@@ -1383,22 +1603,27 @@ components:
           nullable: true
         pontos_por_pessoa:
           type: integer
+          nullable: true
           minimum: 0
           maximum: 1000000
         pontos_por_novo_afastado:
           type: integer
+          nullable: true
           minimum: 0
           maximum: 1000000
         bonificacao_a_cada_cinco_novos:
           type: integer
+          nullable: true
           minimum: 0
           maximum: 1000000
         meta_nacional:
           type: integer
+          nullable: true
           minimum: 0
           maximum: 1000000
         bonificacao_meta_nacional:
           type: integer
+          nullable: true
           minimum: 0
           maximum: 1000000
         exige_foto:
@@ -1406,6 +1631,7 @@ components:
         tipo_pessoa:
           type: string
           enum: [integrante, novo_ou_afastado]
+          nullable: true
         link_google_forms:
           type: string
           maxLength: 2048
@@ -1414,10 +1640,201 @@ components:
             Opcional. Se não for nulo nem vazio, deve ser um link HTTPS de
             forms.gle/<caminho> ou docs.google.com/forms/<caminho>; espaços
             nas extremidades são removidos antes de salvar.
+        regras_pontuacao:
+          type: array
+          maxItems: 100
+          description: >-
+            Regras dinâmicas de pontuação. Se omitida ou vazia, as propriedades
+            legadas de pontuação acima são convertidas para regras equivalentes.
+          items:
+            $ref: '#/components/schemas/RegraPontuacao'
+        campos_relatorio:
+          type: array
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/CampoRelatorioMissao'
+    RegraPontuacao:
+      type: object
+      description: >-
+        Regra dinâmica de uma missão. `tipo` seleciona o formato aplicável:
+        POR_PESSOA exige categoria e pontos; POR_QUANTIDADE exige campo e
+        pontos_por_unidade; POR_RELATORIO exige pontos; A_CADA e META exigem
+        campo, escopo, quantidade e pontos; FAIXAS exige campo, escopo e faixas;
+        PERCENTUAL exige campo, campo_base, percentual e pontos;
+        FAIXAS_PERCENTUAIS exige campo, campo_base, escopo e faixas. As regras
+        percentuais somam numerador e denominador por TRIBO ou NACAO; com base
+        agregada zero, não concedem pontos. `quando` é opcional. Campos extras
+        são preservados na configuração.
+      required: [tipo]
+      properties:
+        tipo:
+          type: string
+          enum: [POR_PESSOA, POR_QUANTIDADE, POR_RELATORIO, A_CADA, META, FAIXAS, PERCENTUAL, FAIXAS_PERCENTUAIS, PONTOS_POR_PESSOA, PONTOS_POR_QUANTIDADE, BONUS_A_CADA, BONUS_META, BONUS_FAIXAS]
+          description: Os aliases são normalizados para os tipos canônicos correspondentes.
+        categoria:
+          type: string
+        pontos:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        campo:
+          type: string
+          description: >-
+            Métricas internas aceitas incluem integrantes, pessoas,
+            total_pessoas, novos_afastados, novos, afastados e convidados;
+            outros nomes devem identificar campos numéricos do escopo RELATORIO.
+            Em PERCENTUAL e FAIXAS_PERCENTUAIS, é o numerador.
+        campo_base:
+          type: string
+          description: >-
+            Denominador de PERCENTUAL e FAIXAS_PERCENTUAIS. Assim como campo,
+            deve ser uma contagem suportada ou identificar um campo do tipo
+            numero no escopo RELATORIO.
+        pontos_por_unidade:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        percentual:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: >-
+            Limite percentual de PERCENTUAL, entre 0 e 100 inclusive; os pontos
+            são concedidos quando a razão agregada campo/campo_base atinge esse
+            limite.
+        quantidade:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        escopo:
+          type: string
+          enum: [TRIBO, NACAO]
+          description: TRIBO agrega por tribo; NACAO agrega por nação e soma o bônus às tribos da nação.
+        distribuir_para:
+          type: string
+          enum: [TRIBOS, TRIBO_GERADORA]
+          description: >-
+            Para escopo NACAO, TRIBOS distribui o bônus às tribos da nação e
+            TRIBO_GERADORA somente às tribos com relatórios aprovados na missão.
+        faixas:
+          type: array
+          minItems: 1
+          maxItems: 30
+          description: >-
+            Para FAIXAS, cada item usa minimo e pontos. Para
+            FAIXAS_PERCENTUAIS, cada item usa minimo_percentual e pontos; os
+            limites percentuais precisam ser únicos e estar entre 0 e 100.
+          items:
+            anyOf:
+              - $ref: '#/components/schemas/FaixaPontuacao'
+              - $ref: '#/components/schemas/FaixaPercentual'
+        estrategia:
+          type: string
+          enum: [MAIOR_FAIXA, CUMULATIVA]
+          description: >-
+            Para FAIXAS e FAIXAS_PERCENTUAIS, CUMULATIVA soma os pontos de
+            todas as faixas atingidas; MAIOR_FAIXA usa os pontos da faixa mais
+            alta atingida. O padrão é MAIOR_FAIXA.
+          default: MAIOR_FAIXA
+        quando:
+          allOf:
+            - $ref: '#/components/schemas/CondicaoPontuacao'
+          description: >-
+            Condição opcional. Em POR_PESSOA, os testes usam dados da pessoa
+            por padrão; defina origem RELATORIO explicitamente para testar os
+            dados do relatório. Nas demais regras, a origem padrão é RELATORIO.
+        quando_pessoa:
+          allOf:
+            - $ref: '#/components/schemas/CondicaoPontuacao'
+          description: >-
+            Filtro por pessoa para POR_QUANTIDADE, A_CADA, META, FAIXAS,
+            PERCENTUAL ou FAIXAS_PERCENTUAIS. A origem padrão é PESSOA.
+            Só é aceito quando campo (o numerador, nas regras percentuais) é
+            uma contagem de pessoas: integrantes, pessoas, total_pessoas,
+            novos_afastados, novos, afastados ou convidados. Reduz essa
+            contagem antes de agregá-la; campo_base não recebe esse filtro.
+      additionalProperties: true
+    FaixaPontuacao:
+      type: object
+      required: [minimo, pontos]
+      properties:
+        minimo:
+          type: integer
+          minimum: 0
+        pontos:
+          type: integer
+          minimum: 0
+      additionalProperties: true
+    FaixaPercentual:
+      type: object
+      required: [minimo_percentual, pontos]
+      properties:
+        minimo_percentual:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Limite percentual inclusivo da faixa; valores devem ser únicos na regra.
+        pontos:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+      additionalProperties: true
+    CondicaoPontuacao:
+      type: object
+      description: >-
+        Condição recursiva: use `todas` (AND) ou `alguma` (OR), com até 30
+        itens, ou um teste folha que exige campo e valor. origem aceita
+        RELATORIO (padrão) ou PESSOA; operador aceita IGUAL/EQ, DIFERENTE/NE,
+        MAIOR_QUE/GT, MAIOR_OU_IGUAL/GTE, MENOR_QUE/LT,
+        MENOR_OU_IGUAL/LTE e CONTEM. Quando a condição aparece em
+        quando_pessoa, a origem padrão efetiva é PESSOA.
+      anyOf:
+        - type: object
+          required: [todas]
+        - type: object
+          required: [alguma]
+        - type: object
+          required: [campo, valor]
+      properties:
+        todas:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/CondicaoPontuacao'
+        alguma:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/CondicaoPontuacao'
+        campo:
+          type: string
+        origem:
+          type: string
+          enum: [RELATORIO, PESSOA]
+          default: RELATORIO
+        operador:
+          type: string
+          default: IGUAL
+        valor:
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+      additionalProperties: true
     RequisicaoCriarMissoes:
       type: object
       required: [missoes]
       properties:
+        rally:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/DadosRally'
+          nullable: true
+          description: >-
+            Se omitido ou nulo, os limites do rally são inferidos a partir das
+            datas das missões; o nome também é gerado.
         missoes:
           type: array
           minItems: 1
@@ -1426,7 +1843,7 @@ components:
             $ref: '#/components/schemas/DadosMissao'
     RespostaInterpretacaoMissoes:
       type: object
-      required: [origem, mensagem, texto_original, missoes, links_google_forms, ambiguidades]
+      required: [origem, mensagem, texto_original, missoes, links_google_forms, ambiguidades, rally]
       description: >-
         Retornada apenas quando a IA consegue interpretar a mensagem. Cada
         sugestão é um objeto de dados de missão; revise as sugestões e
@@ -1455,6 +1872,11 @@ components:
           type: array
           items:
             type: string
+        rally:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/DadosRally'
+          nullable: true
     MissaoSugerida:
       type: object
       description: >-
@@ -1474,6 +1896,8 @@ components:
         - exige_foto
         - tipo_pessoa
         - link_google_forms
+        - regras_pontuacao
+        - campos_relatorio
       properties:
         nome:
           type: string
@@ -1524,6 +1948,14 @@ components:
           maxLength: 2048
           nullable: true
           description: Link HTTPS extraído da mensagem; nulo quando não associado.
+        regras_pontuacao:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegraPontuacao'
+        campos_relatorio:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampoRelatorioMissao'
     RespostaInterpretacao:
       type: object
       required: [origem, mensagem, texto_original, regras, ambiguidades]
@@ -1567,6 +1999,18 @@ components:
         tipo:
           type: string
           enum: [texto, paragrafo, numero, selecao]
+          description: >-
+            Respostas devem preencher o campo quando obrigatorio=true. Para
+            selecao, opcoes precisa conter ao menos uma opção.
+        escopo:
+          type: string
+          enum: [RELATORIO, PESSOA]
+          default: RELATORIO
+          description: >-
+            RELATORIO coloca a resposta em respostas; PESSOA coloca-a no mapa
+            dados de cada pessoa em relatorio.pessoas. No envio público do
+            formulário, campos PESSOA marcados obrigatórios devem estar
+            presentes em dados de cada item de relatorio.pessoas.
         obrigatorio:
           type: boolean
           default: false
@@ -1587,10 +2031,9 @@ components:
           type: string
           format: uuid
           nullable: true
-          deprecated: true
           description: >-
-            Campo legado aceito na criação, mas ignorado; formulários novos
-            são salvos sem missão associada.
+            Associação opcional a uma missão. Se informada, a missão deve
+            existir e o formulário público aceitará envios somente para ela.
         titulo:
           type: string
           minLength: 1
@@ -1615,11 +2058,9 @@ components:
               type: string
               format: uuid
               nullable: true
-              deprecated: true
               readOnly: true
               description: >-
-                Campo somente de leitura. Pode conter a missão antiga ou ser
-                nulo em formulários criados sem associação a missão.
+                Campo somente de leitura. Contém a missão associada ou null.
     Formulario:
       type: object
       required: [id, token, ativo, definicao]
@@ -1637,10 +2078,11 @@ components:
     RelatorioFormulario:
       type: object
       description: >-
-        Dados do relatório para esta resposta. As quantidades são derivadas
-        da quantidade de linhas não vazias em nomes_integrantes e
-        nomes_novos_afastados, respectivamente. Cada lista aceita no máximo
-        200 nomes.
+        Dados do relatório para esta resposta. As quantidades devem corresponder
+        às pessoas fornecidas em pessoas ou, no formato legado, às linhas não
+        vazias em nomes_integrantes e nomes_novos_afastados. Linhas contendo
+        somente "nenhum" não contam. Cada quantidade tem limite 200 e pessoas
+        aceita no máximo 400 itens.
       required: [missao_id, tribo_id]
       properties:
         missao_id:
@@ -1652,23 +2094,35 @@ components:
         quantidade_pessoas:
           type: integer
           minimum: 0
+          maximum: 200
           default: 0
         quantidade_novos_afastados:
           type: integer
           minimum: 0
+          maximum: 200
           default: 0
         observacoes:
           type: string
           nullable: true
+        pessoas:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/PessoaRelatorio'
     EnvioFormulario:
       type: object
       required:
         - relatorio
         - nacao_id
-        - nomes_integrantes
-        - nomes_novos_afastados
         - preenchido_por
         - respostas
+      description: >-
+        Use relatorio.pessoas para enviar nome, categoria e campos por pessoa.
+        Se essa lista for omitida ou vazia, informe nomes_integrantes e
+        nomes_novos_afastados no formato legado; esses dois campos são exigidos
+        pelo serviço apenas nesse formato. Em relatorio.pessoas, cada campo
+        PESSOA obrigatório da definição precisa ser informado em dados para
+        cada item.
       properties:
         relatorio:
           $ref: '#/components/schemas/RelatorioFormulario'
@@ -1678,14 +2132,16 @@ components:
           description: Deve corresponder à nação da tribo informada no relatório.
         nomes_integrantes:
           type: string
-          minLength: 1
           maxLength: 5000
-          description: Lista de integrantes, com um nome por linha.
+          description: >-
+            Formato legado, com um nome por linha; usado quando relatorio.pessoas
+            é omitido ou vazio.
         nomes_novos_afastados:
           type: string
-          minLength: 1
           maxLength: 5000
-          description: Lista de pessoas novas ou afastadas, com um nome por linha.
+          description: >-
+            Formato legado, com um nome por linha; usado quando relatorio.pessoas
+            é omitido ou vazio.
         preenchido_por:
           type: string
           minLength: 1
@@ -1694,6 +2150,7 @@ components:
         respostas:
           type: object
           maxProperties: 30
+          description: Respostas de campos com escopo RELATORIO, indexadas por id do campo.
           additionalProperties:
             type: string
             maxLength: 5000
@@ -1717,7 +2174,22 @@ components:
             $ref: '#/components/schemas/RespostaMissao'
         exige_foto:
           type: boolean
-          enum: [true]
+          description: >-
+            Reflete a configuração da missão associada; sem missão associada,
+            o endpoint retorna true.
+    RespostaEnvioFormulario:
+      type: object
+      required: [id, avisos]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identificador do relatório criado.
+        avisos:
+          type: array
+          description: Avisos gerados, incluindo nomes repetidos na missão quando aplicável.
+          items:
+            $ref: '#/components/schemas/AvisoRelatorio'
     RespostaFormulario:
       type: object
       required: [respostas, definicao, tem_foto]
@@ -1736,6 +2208,10 @@ components:
               type: string
             preenchido_por:
               type: string
+            pessoas:
+              type: array
+              items:
+                $ref: '#/components/schemas/PessoaRelatorio'
           additionalProperties:
             type: string
         definicao:

@@ -164,32 +164,31 @@ A integração deverá:
 
 ## Fluxo do rally
 
-1. A assistente cola o recado.
-2. O OpenRouter gera as regras em português.
-3. A assistente revisa e publica.
-4. O coordenador acessa apenas sua tribo.
-5. Envia quantidade, fotos e identificações necessárias.
-6. A IA sugere contagens.
-7. O coordenador confirma.
-8. A assistente revisa e aprova.
-9. O sistema lança os pontos no placar da tribo.
+1. A assistente cola o recado do rally.
+2. O OpenRouter sugere o nome e o período do rally, suas missões, as regras de pontuação e os campos do relatório ou de cada pessoa. Dúvidas e condições que não puderem ser estruturadas ficam sinalizadas para revisão.
+3. A assistente confere as datas, regras, campos e exigência de foto e publica o rally com suas missões. Cada missão pertence a um único rally e fica dentro do período dele.
+4. O coordenador acessa somente os dados da tribo ou nação autorizada.
+5. Envia um relatório pelo formulário da missão, informando as quantidades e o nome de cada pessoa. Campos adicionais e foto obrigatória são enviados junto com o relatório.
+6. O sistema compara nomes normalizados dentro da missão. Quando encontra o mesmo nome novamente, considera cada ocorrência uma pessoa diferente e inclui um aviso para revisão, sem expor os nomes no placar.
+7. O envio cria um relatório imutável. Depois de enviado, não é possível corrigir respostas, trocar a foto nem anexar arquivos. Envios atrasados continuam aceitos e ficam marcados como atrasados.
+8. A assistente aprova ou rejeita cada relatório enviado uma única vez. Somente relatórios aprovados geram pontos.
+9. O placar soma as missões do rally vigente. O período começa e termina nas datas configuradas, inclusive; depois da data final, a contagem exibida volta a zero até outro rally vigente.
 
-Envios atrasados serão aceitos e marcados como atrasados.
+Nesta versão, o relatório registra nomes e foto para revisão humana; a sugestão automática de contagens por análise de imagem ainda não faz parte do fluxo.
 
 ## Pontuação e permissões
 
-- cada missão conta separadamente;
-- a mesma pessoa pode pontuar em missões diferentes;
-- o bônus de cinco novos/afastados é calculado por tribo;
-- o bônus “Alvo das Nações” beneficia as tribos da nação que alcançar a meta;
-- regras publicadas ficam congeladas;
-- bônus não podem ser lançados duas vezes;
-- não haverá reconhecimento facial;
-- novos/afastados serão identificados por nome, código ou marcação manual.
-
-Assistentes veem e administram tudo. Coordenadores veem, enviam e corrigem apenas os relatórios da própria tribo.
+- Cada missão guarda suas regras estruturadas, seus campos de relatório e seu rally. Campos podem valer para o relatório inteiro ou ser preenchidos por pessoa. São aceitas regras de pontos por pessoa, quantidade ou relatório, bônus a cada quantidade, metas absolutas ou percentuais e faixas de pontuação, com escopo por tribo ou nação e condições sobre os dados enviados.
+- As regras são configuradas separadamente para cada missão; os bônus são calculados a partir dos relatórios aprovados do rally correspondente e não são lançados novamente em solicitações repetidas do placar.
+- A mesma pessoa pode pontuar em missões diferentes. Dentro de uma missão, nomes iguais (sem diferenciar maiúsculas/minúsculas ou espaços repetidos; acentos são preservados) são tratados como pessoas distintas, conforme a regra do piloto, e geram um aviso. Como o nome é o único identificador, o sistema não consegue reconhecer se a repetição é um homônimo ou a mesma pessoa enviada outra vez. Relatórios antigos sem nomes não podem ser comparados com novos envios.
+- Pontos só aparecem no placar durante as datas inclusivas do rally ao qual a missão pertence. Fora desse intervalo, o placar do rally não mantém a contagem anterior.
+- Relatórios enviados não podem ser editados. A revisão só aceita relatórios no estado `ENVIADO`; após aprovar ou rejeitar, não é possível rever a decisão nem reenviar alterações naquele relatório.
+- Não haverá reconhecimento facial. Novos e afastados são identificados pelo nome e categoria informados no relatório.
+- Assistentes administram rallies, missões e revisões. Coordenadores só podem consultar e enviar relatórios para a tribo ou nação autorizada; não podem alterar relatórios enviados.
 
 ## Google Drive
+
+A integração com o Google Drive é uma evolução planejada. Na implementação atual, a foto exigida é enviada junto com o relatório imutável e armazenada como anexo privado da resposta do formulário no banco. O endpoint de arquivos rejeita anexos posteriores ao envio.
 
 Uma assistente conecta sua conta Google e será proprietária inicial da pasta central.
 
@@ -201,7 +200,7 @@ Rally
             └── Tribo
 ```
 
-O sistema guardará apenas metadados e identificadores dos arquivos. As fotos serão baixadas temporariamente para análise e não serão tornadas públicas.
+Quando a integração com o Google Drive for ativada, o sistema deverá guardar os metadados e identificadores dos arquivos e evitar que fotos sejam tornadas públicas.
 
 ## Processamento e testes
 

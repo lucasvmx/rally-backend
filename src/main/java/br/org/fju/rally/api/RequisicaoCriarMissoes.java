@@ -8,5 +8,10 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record RequisicaoCriarMissoes(
+        @Valid DadosRally rally,
         @NotEmpty @Size(max = 100) List<@NotNull @Valid DadosMissao> missoes
-) {}
+) {
+    public RequisicaoCriarMissoes(List<DadosMissao> missoes) {
+        this(null, missoes);
+    }
+}

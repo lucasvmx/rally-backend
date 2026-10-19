@@ -1,6 +1,7 @@
 package br.org.fju.rally.servico;
 
 import br.org.fju.rally.api.DadosMissao;
+import br.org.fju.rally.api.DadosRally;
 import br.org.fju.rally.api.RespostaInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
 import org.springframework.beans.factory.annotation.Value;
@@ -157,13 +158,15 @@ public class InterpretadorDeRegras {
             missoes.add(missaoInterpretada(regra, link, ambiguidades));
         }
 
+        DadosRally rally = rallyInterpretado(json.path("rally"), ambiguidades);
+
         if (linksEncontrados.size() > 1 && missoes.stream().noneMatch(missao -> missao.linkGoogleForms() != null)) {
             ambiguidades.add("Escolha manualmente o link de formulário correspondente a cada missão.");
         }
 
         return new RespostaInterpretacaoMissoes("OPENROUTER",
                 "Missões sugeridas pela IA. Revise as regras antes de publicar; condições fora dos campos de pontuação ficam na descrição e não são calculadas automaticamente.", texto,
-                missoes, linksEncontrados, ambiguidades);
+                missoes, linksEncontrados, ambiguidades, rally);
     }
 
     private DadosMissao missaoInterpretada(JsonNode regra, String link, List<String> ambiguidades) {
@@ -179,16 +182,19 @@ public class InterpretadorDeRegras {
             ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
                     + " tem prazo de envio.");
         }
-        if (!temCampo(regra, "pontos_por_pessoa", "pontos_por_integrante")
-                || !temCampo(regra, "pontos_por_novo_afastado", "pontos_por_novo")) {
-            ambiguidades.add("Revise os pontos por pessoa e por pessoa nova ou afastada da missão "
-                    + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
-        }
-        if (!temCampo(regra, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos")
-                || !temCampo(regra, "meta_nacional", "quantidade_meta_nacional")
-                || !temCampo(regra, "bonificacao_meta_nacional", "bonus_nacional")) {
-            ambiguidades.add("Revise os bônus e a meta nacional da missão "
-                    + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+        List<Map<String, Object>> regrasPontuacao = objetos(regra.path("regras_pontuacao"));
+        if (regrasPontuacao.isEmpty()) {
+            if (!temCampo(regra, "pontos_por_pessoa", "pontos_por_integrante")
+                    || !temCampo(regra, "pontos_por_novo_afastado", "pontos_por_novo")) {
+                ambiguidades.add("Revise os pontos por pessoa e por pessoa nova ou afastada da missão "
+                        + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+            }
+            if (!temCampo(regra, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos")
+                    || !temCampo(regra, "meta_nacional", "quantidade_meta_nacional")
+                    || !temCampo(regra, "bonificacao_meta_nacional", "bonus_nacional")) {
+                ambiguidades.add("Revise os bônus e a meta nacional da missão "
+                        + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+            }
         }
         if (!temCampo(regra, "exige_foto", "foto_obrigatoria")) {
             ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
@@ -201,12 +207,39 @@ public class InterpretadorDeRegras {
         int bonusNacional = inteiro(regra, 0, "bonificacao_meta_nacional", "bonus_nacional");
         boolean exigeFoto = booleano(regra, "exige_foto", "foto_obrigatoria");
         String tipoPessoa = texto(regra, "tipo_pessoa", "tipo_de_pessoa");
-        if (tipoPessoa == null) ambiguidades.add("Confirme o tipo de pessoa contado na missão "
+        if (tipoPessoa == null && regrasPontuacao.isEmpty()) ambiguidades.add("Confirme o tipo de pessoa contado na missão "
                 + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
         tipoPessoa = tipoPessoa != null && (tipoPessoa.toLowerCase().contains("novo")
                 || tipoPessoa.toLowerCase().contains("afastado")) ? "novo_ou_afastado" : "integrante";
+        List<Map<String, Object>> camposRelatorio = objetos(regra.path("campos_relatorio"));
+        if (regrasPontuacao.isEmpty()) {
+            ambiguidades.add("Revise se todos os bônus e condições da missão “"
+                    + (nome == null ? "sem nome" : nome) + "” foram convertidos em regras calculáveis.");
+        }
         return new DadosMissao(nome, descricao, inicio, fim, prazo, pontosPessoa, pontosNovo, bonusCinco,
-                metaNacional, bonusNacional, exigeFoto, tipoPessoa, link);
+                metaNacional, bonusNacional, exigeFoto, tipoPessoa, link, regrasPontuacao, camposRelatorio);
+    }
+
+    private DadosRally rallyInterpretado(JsonNode json, List<String> ambiguidades) {
+        if (json == null || !json.isObject()) return null;
+        String nome = texto(json, "nome", "nome_rally", "titulo");
+        LocalDate inicio = data(json, "data_inicio", "inicio");
+        LocalDate fim = data(json, "data_fim", "fim");
+        if (nome == null || inicio == null || fim == null) {
+            ambiguidades.add("Confirme o nome e as datas de início e fim do rally.");
+            return null;
+        }
+        return new DadosRally(nome, inicio, fim);
+    }
+
+    private List<Map<String, Object>> objetos(JsonNode valor) {
+        if (!valor.isArray()) return List.of();
+        List<Map<String, Object>> objetos = new ArrayList<>();
+        for (JsonNode item : valor) {
+            if (item.isObject()) objetos.add(objectMapper.convertValue(item,
+                    new TypeReference<Map<String, Object>>() {}));
+        }
+        return List.copyOf(objetos);
     }
 
     private List<String> extrairLinksGoogleForms(String texto) {
@@ -404,13 +437,28 @@ public class InterpretadorDeRegras {
 
     private String promptSistemaMissoes() {
         return "Você transforma mensagens de Rally em missões estruturadas. Responda somente JSON válido, sem markdown, "
-                + "com a chave raiz 'missoes' contendo uma missão por atividade descrita e uma chave 'ambiguidades' com "
+                + "com a chave raiz 'rally' contendo nome, data_inicio e data_fim do Rally, 'missoes' contendo uma missão por atividade descrita, e uma chave 'ambiguidades' com "
                 + "dúvidas que exijam revisão humana. Para cada missão use exatamente os campos: nome, descricao, "
                 + "data_inicio (AAAA-MM-DD), data_fim (AAAA-MM-DD), prazo_envio (AAAA-MM-DDTHH:mm:ss ou null), "
                 + "pontos_por_pessoa, pontos_por_novo_afastado, bonificacao_a_cada_cinco_novos, meta_nacional, "
                 + "bonificacao_meta_nacional, exige_foto, tipo_pessoa ('integrante' ou 'novo_ou_afastado') e "
-                + "link_google_forms (URL HTTPS literal da mensagem ou null). Preserve no campo descricao todas as "
-                + "condições, bônus e regras adicionais que não caibam nos campos de pontuação. Não invente datas, "
+                + "link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e campos_relatorio. "
+                + "Estruture regras_pontuacao como uma lista de objetos JSON: POR_PESSOA (categoria, pontos, quando), "
+                + "POR_QUANTIDADE (campo, pontos_por_unidade, quando), POR_RELATORIO (pontos, quando), A_CADA "
+                + "(campo, quantidade, pontos, escopo TRIBO ou NACAO), META (campo, quantidade, pontos, escopo "
+                + "TRIBO ou NACAO, distribuir_para TRIBOS), FAIXAS (campo, escopo, estrategia MAIOR_FAIXA ou "
+                + "CUMULATIVA, faixas com minimo e pontos), PERCENTUAL (campo, campo_base, percentual, pontos, "
+                + "escopo, distribuir_para) ou FAIXAS_PERCENTUAIS (campo, campo_base, escopo, estrategia e faixas "
+                + "com minimo_percentual e pontos). Para percentual, campo é o numerador e campo_base é o denominador; "
+                + "ambos devem ser números informados no relatório ou contagens de pessoas suportadas. Escreva uma condição "
+                + "como campo, valor, operador e origem (RELATORIO ou PESSOA); use 'todas' ou 'alguma' para combinar "
+                + "condições. Em POR_PESSOA, quando avalia os dados da pessoa por padrão; informe origem RELATORIO para "
+                + "uma condição do relatório. Em regras agregadas, quando filtra o relatório e quando_pessoa filtra as "
+                + "pessoas antes da contagem. Use quando para preservar condições de modalidade, "
+                + "camiseta, presença, foto, dia, local e demais critérios. Defina campos_relatorio como a lista de "
+                + "campos id/titulo/tipo/obrigatorio/opcoes/escopo necessários às regras; escopo é RELATORIO ou PESSOA. "
+                + "Campos PESSOA podem ser preenchidos individualmente para cada nome enviado. Preserve no campo descricao todas as "
+                + "condições que não puderem ser estruturadas e registre-as em ambiguidades. Não invente datas, "
                 + "valores nem links; quando faltar informação, use zero/null e registre a ambiguidade. Uma missão "
                 + "com mais de uma data de realização pode ter um período entre data_inicio e data_fim. A data de "
                 + "referência é " + LocalDate.now(ZoneId.of("America/Sao_Paulo")) + "; se o ano não estiver explícito, "

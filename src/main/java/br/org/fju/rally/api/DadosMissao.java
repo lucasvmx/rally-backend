@@ -9,6 +9,8 @@ import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 public record DadosMissao(
         @NotBlank @Size(max = 180) String nome,
@@ -16,12 +18,23 @@ public record DadosMissao(
         @NotNull LocalDate dataInicio,
         @NotNull LocalDate dataFim,
         LocalDateTime prazoEnvio,
-        @NotNull @Min(0) @Max(1000000) Integer pontosPorPessoa,
-        @NotNull @Min(0) @Max(1000000) Integer pontosPorNovoAfastado,
-        @NotNull @Min(0) @Max(1000000) Integer bonificacaoACadaCincoNovos,
-        @NotNull @Min(0) @Max(1000000) Integer metaNacional,
-        @NotNull @Min(0) @Max(1000000) Integer bonificacaoMetaNacional,
+        @Min(0) @Max(1000000) Integer pontosPorPessoa,
+        @Min(0) @Max(1000000) Integer pontosPorNovoAfastado,
+        @Min(0) @Max(1000000) Integer bonificacaoACadaCincoNovos,
+        @Min(0) @Max(1000000) Integer metaNacional,
+        @Min(0) @Max(1000000) Integer bonificacaoMetaNacional,
         boolean exigeFoto,
-        @NotBlank @Pattern(regexp = "integrante|novo_ou_afastado") String tipoPessoa,
-        @Size(max = 2048) String linkGoogleForms
-) {}
+        @Pattern(regexp = "integrante|novo_ou_afastado") String tipoPessoa,
+        @Size(max = 2048) String linkGoogleForms,
+        @Size(max = 100) List<Map<String, Object>> regrasPontuacao,
+        @Size(max = 30) List<Map<String, Object>> camposRelatorio
+) {
+    public DadosMissao(String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
+                       LocalDateTime prazoEnvio, Integer pontosPorPessoa, Integer pontosPorNovoAfastado,
+                       Integer bonificacaoACadaCincoNovos, Integer metaNacional, Integer bonificacaoMetaNacional,
+                       boolean exigeFoto, String tipoPessoa, String linkGoogleForms) {
+        this(nome, descricao, dataInicio, dataFim, prazoEnvio, pontosPorPessoa, pontosPorNovoAfastado,
+                bonificacaoACadaCincoNovos, metaNacional, bonificacaoMetaNacional, exigeFoto,
+                tipoPessoa, linkGoogleForms, List.of(), List.of());
+    }
+}

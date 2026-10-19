@@ -3,6 +3,7 @@ package br.org.fju.rally.api;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
+import br.org.fju.rally.repositorio.RallyRepositorio;
 import br.org.fju.rally.servico.MissaoService;
 import br.org.fju.rally.servico.GoogleDriveService;
 import br.org.fju.rally.servico.PontuacaoService;
@@ -22,6 +23,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -33,11 +36,12 @@ public class RallyController {
     private final PontuacaoService pontuacaoService;
     private final MissaoService missaoService;
     private final GoogleDriveService googleDriveService;
+    private final RallyRepositorio rallyRepositorio;
 
     public RallyController(NacaoRepositorio nacaoRepositorio, TriboRepositorio triboRepositorio,
                            MissaoRepositorio missaoRepositorio, RelatorioService relatorioService,
                            PontuacaoService pontuacaoService, MissaoService missaoService,
-                           GoogleDriveService googleDriveService) {
+                           GoogleDriveService googleDriveService, RallyRepositorio rallyRepositorio) {
         this.nacaoRepositorio = nacaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.missaoRepositorio = missaoRepositorio;
@@ -45,6 +49,7 @@ public class RallyController {
         this.pontuacaoService = pontuacaoService;
         this.missaoService = missaoService;
         this.googleDriveService = googleDriveService;
+        this.rallyRepositorio = rallyRepositorio;
     }
 
     @GetMapping("/saude")
@@ -64,7 +69,16 @@ public class RallyController {
 
     @GetMapping("/missoes")
     public List<RespostaMissao> missoes() {
-        return missaoRepositorio.findAll().stream().map(RespostaMissao::de).toList();
+        return missaoRepositorio.buscarTodasComRally().stream().map(RespostaMissao::de).toList();
+    }
+
+    @GetMapping("/rallies")
+    public List<RespostaRally> rallies() {
+        LocalDate hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+        return rallyRepositorio.findAll().stream()
+                .sorted(java.util.Comparator.comparing(br.org.fju.rally.dominio.Rally::getDataInicio).reversed())
+                .map(rally -> RespostaRally.de(rally, hoje))
+                .toList();
     }
 
     @PostMapping("/missoes/interpretar")

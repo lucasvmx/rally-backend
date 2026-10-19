@@ -57,36 +57,13 @@ public class GoogleDriveService {
 
     public ArquivoDrive enviar(UUID relatorioId, MultipartFile arquivo,
                                HttpServletRequest requisicao, Authentication autenticacao) {
-        if (arquivo == null || arquivo.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecione uma foto para enviar.");
-        }
-
         Relatorio relatorio = relatorioRepositorio.buscarComReferencias().stream()
                 .filter(item -> item.getId().equals(relatorioId))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Relatório não encontrado."));
         validarAcessoAoRelatorio(relatorio, requisicao);
-
-        String token = tokenGoogle(autenticacao);
-        try {
-            String raiz = pastaCentral == null || pastaCentral.isBlank()
-                    ? encontrarOuCriarPasta(token, "Rally", null)
-                    : pastaCentral;
-            String pastaSemana = encontrarOuCriarPasta(token,
-                    "Semana - " + relatorio.getMissao().getDataInicio(), raiz);
-            String pastaMissao = encontrarOuCriarPasta(token,
-                    "Missão - " + nomeSeguro(relatorio.getMissao().getNome()), pastaSemana);
-            String pastaNacao = encontrarOuCriarPasta(token, nomeSeguro(relatorio.getTribo().getNacao().getNome()), pastaMissao);
-            String pastaTribo = encontrarOuCriarPasta(token, nomeSeguro(relatorio.getTribo().getNome()), pastaNacao);
-            String identificador = enviarArquivo(token, arquivo, pastaTribo);
-
-            ArquivoDrive metadado = new ArquivoDrive(
-                    UUID.randomUUID(), relatorio, identificador, arquivo.getOriginalFilename(),
-                    arquivo.getContentType(), arquivo.getSize(), hash(arquivo), LocalDateTime.now());
-            return arquivoRepositorio.save(metadado);
-        } catch (IOException excecao) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não foi possível ler a foto enviada.");
-        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "O relatório não pode receber arquivos depois do envio. Inclua a foto no formulário do relatório.");
     }
 
     private void validarAcessoAoRelatorio(Relatorio relatorio, HttpServletRequest requisicao) {
