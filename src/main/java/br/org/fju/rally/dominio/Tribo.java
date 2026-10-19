@@ -29,4 +29,7 @@ public class Tribo {
     @JoinColumn(name = "nacao_id", nullable = false)
     private Nacao nacao;
 
+    @Column(name = "ativa", nullable = false)
+    private boolean ativa;
+
 }

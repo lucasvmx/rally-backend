@@ -71,7 +71,7 @@ class FormulariosControllerTest {
     }
     private void prepararReferenciaDoEnvio() {
         when(missoes.existsById(missao)).thenReturn(true);
-        when(tribos.findById(tribo)).thenReturn(Optional.of(new Tribo(tribo, "Tribo", new Nacao(nacao, "Nação"))));
+        when(tribos.findById(tribo)).thenReturn(Optional.of(new Tribo(tribo, "Tribo", new Nacao(nacao, "Nação"), true)));
     }
     private MockMultipartFile fotoValida() {
         byte[] bytes = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=");
