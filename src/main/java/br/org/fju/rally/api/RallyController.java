@@ -3,7 +3,7 @@ package br.org.fju.rally.api;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
-import br.org.fju.rally.servico.InterpretadorDeRegras;
+import br.org.fju.rally.servico.MissaoService;
 import br.org.fju.rally.servico.GoogleDriveService;
 import br.org.fju.rally.servico.PontuacaoService;
 import br.org.fju.rally.servico.RelatorioService;
@@ -31,19 +31,19 @@ public class RallyController {
     private final MissaoRepositorio missaoRepositorio;
     private final RelatorioService relatorioService;
     private final PontuacaoService pontuacaoService;
-    private final InterpretadorDeRegras interpretadorDeRegras;
+    private final MissaoService missaoService;
     private final GoogleDriveService googleDriveService;
 
     public RallyController(NacaoRepositorio nacaoRepositorio, TriboRepositorio triboRepositorio,
                            MissaoRepositorio missaoRepositorio, RelatorioService relatorioService,
-                           PontuacaoService pontuacaoService, InterpretadorDeRegras interpretadorDeRegras,
+                           PontuacaoService pontuacaoService, MissaoService missaoService,
                            GoogleDriveService googleDriveService) {
         this.nacaoRepositorio = nacaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.missaoRepositorio = missaoRepositorio;
         this.relatorioService = relatorioService;
         this.pontuacaoService = pontuacaoService;
-        this.interpretadorDeRegras = interpretadorDeRegras;
+        this.missaoService = missaoService;
         this.googleDriveService = googleDriveService;
     }
 
@@ -65,6 +65,18 @@ public class RallyController {
     @GetMapping("/missoes")
     public List<RespostaMissao> missoes() {
         return missaoRepositorio.findAll().stream().map(RespostaMissao::de).toList();
+    }
+
+    @PostMapping("/missoes/interpretar")
+    public RespostaInterpretacaoMissoes interpretarMissoes(@Valid @RequestBody RequisicaoInterpretacao corpo,
+                                                            HttpServletRequest requisicao) {
+        return missaoService.interpretar(corpo, requisicao);
+    }
+
+    @PostMapping("/missoes")
+    public List<RespostaMissao> criarMissoes(@Valid @RequestBody RequisicaoCriarMissoes corpo,
+                                              HttpServletRequest requisicao) {
+        return missaoService.criar(corpo, requisicao);
     }
 
     @GetMapping("/relatorios")
@@ -102,7 +114,8 @@ public class RallyController {
     }
 
     @PostMapping("/regras/interpretar")
-    public RespostaInterpretacao interpretar(@Valid @RequestBody RequisicaoInterpretacao corpo) {
-        return interpretadorDeRegras.interpretar(corpo.texto());
+    public RespostaInterpretacao interpretar(@Valid @RequestBody RequisicaoInterpretacao corpo,
+                                              HttpServletRequest requisicao) {
+        return missaoService.interpretarRegras(corpo, requisicao);
     }
 }

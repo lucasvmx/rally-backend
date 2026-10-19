@@ -1,25 +1,40 @@
 package br.org.fju.rally.servico;
 
+import br.org.fju.rally.api.DadosMissao;
 import br.org.fju.rally.api.RespostaInterpretacao;
+import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.net.URI;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class InterpretadorDeRegras {
     private static final Pattern PONTOS = Pattern.compile("([0-9][0-9.]*)\\s*talentos", Pattern.CASE_INSENSITIVE);
+    private static final Pattern LINK_FORMULARIO = Pattern.compile(
+            "https?://(?:forms\\.gle/[^\\s<>]+|docs\\.google\\.com/forms/[^\\s<>]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CABECALHO_MISSAO = Pattern.compile("(?m)^\\s*(?:➡️|➡|➜|→)\\s*");
 
     private final RestClient.Builder restClientBuilder;
     private final ObjectMapper objectMapper;
@@ -65,6 +80,254 @@ public class InterpretadorDeRegras {
             }
         }
         return interpretacaoLocal(texto, "Não foi possível consultar a IA; a sugestão local precisa ser revisada.");
+    }
+
+    public RespostaInterpretacaoMissoes interpretarMissoes(String texto) {
+        if (chave == null || chave.isBlank() || modeloPrincipal == null || modeloPrincipal.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "A interpretação de missões exige OPENROUTER_API_KEY e OPENROUTER_MODELO_REGRAS configurados.");
+        }
+
+        List<String> modelos = new ArrayList<>();
+        modelos.add(modeloPrincipal);
+        if (modelosReserva != null && !modelosReserva.isBlank()) {
+            for (String modelo : modelosReserva.split(",")) {
+                if (!modelo.isBlank()) modelos.add(modelo.trim());
+            }
+        }
+
+        RuntimeException ultimaFalha = null;
+        for (String modelo : modelos) {
+            try {
+                return chamarOpenRouterParaMissoes(texto, modelo);
+            } catch (RuntimeException excecao) {
+                ultimaFalha = excecao;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                "Não foi possível interpretar as missões com a IA. Tente novamente mais tarde.", ultimaFalha);
+    }
+
+    private RespostaInterpretacaoMissoes chamarOpenRouterParaMissoes(String texto, String modelo) {
+        Map<String, Object> corpo = Map.of(
+                "model", modelo,
+                "temperature", 0,
+                "response_format", Map.of("type", "json_object"),
+                "messages", List.of(
+                        Map.of("role", "system", "content", promptSistemaMissoes()),
+                        Map.of("role", "user", "content", texto)));
+
+        RestClient cliente = restClientBuilder.baseUrl(endereco).build();
+        JsonNode resposta = cliente.post()
+                .uri("/chat/completions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + chave)
+                .header("X-Title", "Rally das Tribos")
+                .body(corpo)
+                .retrieve()
+                .body(JsonNode.class);
+        if (resposta == null) throw new IllegalStateException("Resposta vazia do OpenRouter.");
+
+        String conteudo = resposta.at("/choices/0/message/content").asText();
+        JsonNode json = objectMapper.readTree(conteudo);
+        JsonNode regras = json.path("missoes");
+        if (!regras.isArray()) regras = json.path("regras");
+        if (!regras.isArray() || regras.size() == 0 || regras.size() > 100) {
+            throw new IllegalArgumentException("A resposta da IA não contém uma lista válida de missões.");
+        }
+
+        List<String> linksEncontrados = extrairLinksGoogleForms(texto);
+        List<List<String>> linksPorSecao = extrairLinksPorSecao(texto);
+        List<String> ambiguidades = new ArrayList<>();
+        JsonNode ambiguidadesJson = json.path("ambiguidades");
+        if (ambiguidadesJson.isArray()) ambiguidadesJson.forEach(item -> {
+            if (!item.asText().isBlank()) ambiguidades.add(item.asText());
+        });
+        List<DadosMissao> missoes = new ArrayList<>();
+        for (int indice = 0; indice < regras.size(); indice++) {
+            JsonNode regra = regras.get(indice);
+            if (!regra.isObject()) throw new IllegalArgumentException("Uma missão da IA não é um objeto JSON.");
+            String link = texto(regra, "link_google_forms", "link_formulario_google", "google_forms_url");
+            if (link != null && !linksEncontrados.contains(limparLink(link))) link = null;
+            if (link == null && linksEncontrados.size() == 1) link = linksEncontrados.getFirst();
+            if (link == null && regras.size() == linksPorSecao.size() && indice < linksPorSecao.size()
+                    && !linksPorSecao.get(indice).isEmpty()) {
+                link = linksPorSecao.get(indice).getFirst();
+            }
+            missoes.add(missaoInterpretada(regra, link, ambiguidades));
+        }
+
+        if (linksEncontrados.size() > 1 && missoes.stream().noneMatch(missao -> missao.linkGoogleForms() != null)) {
+            ambiguidades.add("Escolha manualmente o link de formulário correspondente a cada missão.");
+        }
+
+        return new RespostaInterpretacaoMissoes("OPENROUTER",
+                "Missões sugeridas pela IA. Revise as regras antes de publicar; condições fora dos campos de pontuação ficam na descrição e não são calculadas automaticamente.", texto,
+                missoes, linksEncontrados, ambiguidades);
+    }
+
+    private DadosMissao missaoInterpretada(JsonNode regra, String link, List<String> ambiguidades) {
+        String nome = texto(regra, "nome", "nome_missao", "titulo");
+        String descricao = texto(regra, "descricao", "regras_resumo", "resumo");
+        LocalDate inicio = data(regra, "data_inicio", "inicio");
+        LocalDate fim = data(regra, "data_fim", "fim");
+        LocalDateTime prazo = dataHora(regra, fim);
+        if (nome == null) ambiguidades.add("Informe o nome de uma das missões antes de publicar.");
+        if (inicio == null || fim == null) ambiguidades.add("Complete as datas de início e fim da missão "
+                + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+        if (prazo == null) {
+            ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
+                    + " tem prazo de envio.");
+        }
+        if (!temCampo(regra, "pontos_por_pessoa", "pontos_por_integrante")
+                || !temCampo(regra, "pontos_por_novo_afastado", "pontos_por_novo")) {
+            ambiguidades.add("Revise os pontos por pessoa e por pessoa nova ou afastada da missão "
+                    + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+        }
+        if (!temCampo(regra, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos")
+                || !temCampo(regra, "meta_nacional", "quantidade_meta_nacional")
+                || !temCampo(regra, "bonificacao_meta_nacional", "bonus_nacional")) {
+            ambiguidades.add("Revise os bônus e a meta nacional da missão "
+                    + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+        }
+        if (!temCampo(regra, "exige_foto", "foto_obrigatoria")) {
+            ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
+                    + " exige foto.");
+        }
+        int pontosPessoa = inteiro(regra, 0, "pontos_por_pessoa", "pontos_por_integrante");
+        int pontosNovo = inteiro(regra, 0, "pontos_por_novo_afastado", "pontos_por_novo");
+        int bonusCinco = inteiro(regra, 0, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos");
+        int metaNacional = inteiro(regra, 0, "meta_nacional", "quantidade_meta_nacional");
+        int bonusNacional = inteiro(regra, 0, "bonificacao_meta_nacional", "bonus_nacional");
+        boolean exigeFoto = booleano(regra, "exige_foto", "foto_obrigatoria");
+        String tipoPessoa = texto(regra, "tipo_pessoa", "tipo_de_pessoa");
+        if (tipoPessoa == null) ambiguidades.add("Confirme o tipo de pessoa contado na missão "
+                + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
+        tipoPessoa = tipoPessoa != null && (tipoPessoa.toLowerCase().contains("novo")
+                || tipoPessoa.toLowerCase().contains("afastado")) ? "novo_ou_afastado" : "integrante";
+        return new DadosMissao(nome, descricao, inicio, fim, prazo, pontosPessoa, pontosNovo, bonusCinco,
+                metaNacional, bonusNacional, exigeFoto, tipoPessoa, link);
+    }
+
+    private List<String> extrairLinksGoogleForms(String texto) {
+        Set<String> links = new LinkedHashSet<>();
+        Matcher matcher = LINK_FORMULARIO.matcher(texto);
+        while (matcher.find()) {
+            String link = limparLink(matcher.group());
+            if (linkGoogleFormsValido(link)) links.add(link);
+        }
+        return List.copyOf(links);
+    }
+
+    private List<List<String>> extrairLinksPorSecao(String texto) {
+        Matcher matcher = CABECALHO_MISSAO.matcher(texto);
+        List<Integer> inicios = new ArrayList<>();
+        while (matcher.find()) inicios.add(matcher.end());
+        List<List<String>> secoes = new ArrayList<>();
+        for (int indice = 0; indice < inicios.size(); indice++) {
+            int inicio = inicios.get(indice);
+            int fim = indice + 1 < inicios.size() ? inicios.get(indice + 1) : texto.length();
+            secoes.add(extrairLinksGoogleForms(texto.substring(inicio, fim)));
+        }
+        return secoes;
+    }
+
+    private static String limparLink(String link) {
+        String limpo = link.trim();
+        while (!limpo.isEmpty() && ".,;:!?*)]}".indexOf(limpo.charAt(limpo.length() - 1)) >= 0) {
+            limpo = limpo.substring(0, limpo.length() - 1);
+        }
+        return limpo;
+    }
+
+    public static boolean linkGoogleFormsValido(String link) {
+        if (link == null || link.isBlank() || link.length() > 2048) return false;
+        try {
+            URI uri = URI.create(link);
+            String host = uri.getHost();
+            String caminho = uri.getPath();
+            return "https".equalsIgnoreCase(uri.getScheme()) && uri.getUserInfo() == null && uri.getPort() == -1
+                    && caminho != null
+                    && (("forms.gle".equalsIgnoreCase(host) && caminho.length() > 1)
+                    || ("docs.google.com".equalsIgnoreCase(host) && caminho.startsWith("/forms/")));
+        } catch (RuntimeException excecao) {
+            return false;
+        }
+    }
+
+    private static String texto(JsonNode objeto, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = objeto.get(nome);
+            if (valor != null && !valor.isNull() && !valor.asText().isBlank()) return valor.asText().trim();
+        }
+        return null;
+    }
+
+    private static boolean temCampo(JsonNode objeto, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = objeto.get(nome);
+            if (valor != null && !valor.isNull()) return true;
+        }
+        return false;
+    }
+
+    private static LocalDate data(JsonNode objeto, String... nomes) {
+        String valor = texto(objeto, nomes);
+        if (valor == null) return null;
+        try {
+            return LocalDate.parse(valor);
+        } catch (DateTimeParseException ignorada) {
+            try {
+                return LocalDate.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu"));
+            } catch (DateTimeParseException tambemIgnorada) {
+                return null;
+            }
+        }
+    }
+
+    private static LocalDateTime dataHora(JsonNode objeto, LocalDate dataFim) {
+        String valor = texto(objeto, "prazo_envio", "prazo");
+        if (valor == null) return null;
+        try {
+            return LocalDateTime.parse(valor);
+        } catch (DateTimeParseException ignorada) {
+            try {
+                return LocalDate.parse(valor).atStartOfDay();
+            } catch (DateTimeParseException tambemIgnorada) {
+                try {
+                    return dataFim == null ? null : dataFim.atTime(LocalTime.parse(valor));
+                } catch (DateTimeParseException naoEhHorario) {
+                    return null;
+                }
+            }
+        }
+    }
+
+    private static int inteiro(JsonNode objeto, int padrao, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = objeto.get(nome);
+            if (valor == null || valor.isNull()) continue;
+            if (valor.isNumber()) return Math.max(0, Math.min(1000000, valor.asInt()));
+            String numero = valor.asText().replaceAll("[^0-9]", "");
+            if (numero.isBlank()) return padrao;
+            try {
+                return Math.min(1000000, Integer.parseInt(numero));
+            } catch (NumberFormatException ignorada) {
+                return 1000000;
+            }
+        }
+        return padrao;
+    }
+
+    private static boolean booleano(JsonNode objeto, String... nomes) {
+        for (String nome : nomes) {
+            JsonNode valor = objeto.get(nome);
+            if (valor == null || valor.isNull()) continue;
+            if (valor.isBoolean()) return valor.asBoolean();
+            String texto = valor.asText().toLowerCase();
+            return texto.equals("true") || texto.equals("sim") || texto.equals("yes");
+        }
+        return false;
     }
 
     private RespostaInterpretacao chamarOpenRouter(String texto, String modelo) {
@@ -137,5 +400,22 @@ public class InterpretadorDeRegras {
                 + "Cada regra deve ter nome_missao, data_inicio, data_fim, prazo_envio, pontos_por_pessoa, "
                 + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Preserve missões separadas, "
                 + "missões relâmpago e metas por nação. Nunca aprove pontuação; apenas sugira regras para revisão humana.";
+    }
+
+    private String promptSistemaMissoes() {
+        return "Você transforma mensagens de Rally em missões estruturadas. Responda somente JSON válido, sem markdown, "
+                + "com a chave raiz 'missoes' contendo uma missão por atividade descrita e uma chave 'ambiguidades' com "
+                + "dúvidas que exijam revisão humana. Para cada missão use exatamente os campos: nome, descricao, "
+                + "data_inicio (AAAA-MM-DD), data_fim (AAAA-MM-DD), prazo_envio (AAAA-MM-DDTHH:mm:ss ou null), "
+                + "pontos_por_pessoa, pontos_por_novo_afastado, bonificacao_a_cada_cinco_novos, meta_nacional, "
+                + "bonificacao_meta_nacional, exige_foto, tipo_pessoa ('integrante' ou 'novo_ou_afastado') e "
+                + "link_google_forms (URL HTTPS literal da mensagem ou null). Preserve no campo descricao todas as "
+                + "condições, bônus e regras adicionais que não caibam nos campos de pontuação. Não invente datas, "
+                + "valores nem links; quando faltar informação, use zero/null e registre a ambiguidade. Uma missão "
+                + "com mais de uma data de realização pode ter um período entre data_inicio e data_fim. A data de "
+                + "referência é " + LocalDate.now(ZoneId.of("America/Sao_Paulo")) + "; se o ano não estiver explícito, "
+                + "use-o apenas como sugestão e registre que o ano precisa ser confirmado. Registre em ambiguidades "
+                + "toda condição de bônus que não possa ser calculada com os campos estruturados. Nunca aprove "
+                + "pontuação: produza somente sugestões para revisão humana.";
     }
 }

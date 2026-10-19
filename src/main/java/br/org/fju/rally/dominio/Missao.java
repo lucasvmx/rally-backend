@@ -45,9 +45,20 @@ public class Missao {
     private boolean exigeFoto;
     @Column(name = "tipo_pessoa", nullable = false)
     private String tipoPessoa;
+    @Column(name = "link_google_forms")
+    private String linkGoogleForms;
     @Column(name = "status", nullable = false)
     private String status;
     @Column(name = "versao", nullable = false)
     private int versao;
+
+    public Missao(UUID id, String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
+                  LocalDateTime prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
+                  int bonificacaoACadaCincoNovos, int metaNacional, int bonificacaoMetaNacional,
+                  boolean exigeFoto, String tipoPessoa, String status, int versao) {
+        this(id, nome, descricao, dataInicio, dataFim, prazoEnvio, pontosPorPessoa, pontosPorNovoAfastado,
+                bonificacaoACadaCincoNovos, metaNacional, bonificacaoMetaNacional, exigeFoto, tipoPessoa,
+                null, status, versao);
+    }
 
 }

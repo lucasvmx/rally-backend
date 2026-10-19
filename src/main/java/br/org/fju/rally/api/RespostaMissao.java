@@ -20,6 +20,7 @@ public record RespostaMissao(
         int bonificacaoMetaNacional,
         boolean exigeFoto,
         String tipoPessoa,
+        String linkGoogleForms,
         String status,
         int versao
 ) {
@@ -28,6 +29,6 @@ public record RespostaMissao(
                 missao.getId(), missao.getNome(), missao.getDescricao(), missao.getDataInicio(), missao.getDataFim(),
                 missao.getPrazoEnvio(), missao.getPontosPorPessoa(), missao.getPontosPorNovoAfastado(),
                 missao.getBonificacaoACadaCincoNovos(), missao.getMetaNacional(), missao.getBonificacaoMetaNacional(),
-                missao.isExigeFoto(), missao.getTipoPessoa(), missao.getStatus(), missao.getVersao());
+                missao.isExigeFoto(), missao.getTipoPessoa(), missao.getLinkGoogleForms(), missao.getStatus(), missao.getVersao());
     }
 }

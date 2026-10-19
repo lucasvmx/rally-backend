@@ -96,12 +96,26 @@ public class FormulariosController {
     @PostMapping(value="/publico/formularios/{token}/respostas", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public Map<String, UUID> enviar(@PathVariable String token, @Valid @RequestPart("dados") Envio envio,
-                                   @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos) throws IOException {
+                                   @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos,
+                                   HttpServletRequest requisicao) throws IOException {
+        var coordenador = acesso.exigirCoordenador(requisicao);
+        return enviarAutorizado(token, envio, arquivos, coordenador);
+    }
+
+    // O handler REST sempre valida o contexto de coordenador antes de chamar o processamento interno.
+    Map<String, UUID> enviar(String token, Envio envio, List<MultipartFile> arquivos) throws IOException {
+        return enviarAutorizado(token, envio, arquivos, null);
+    }
+
+    private Map<String, UUID> enviarAutorizado(String token, Envio envio, List<MultipartFile> arquivos,
+                                                AcessoService.ContextoAcesso coordenador) throws IOException {
         Formulario form = buscar(token);
         if (form.definicao().missaoId() != null && !form.definicao().missaoId().equals(envio.relatorio().missaoId())) throw erro("Missão inválida.");
         if (!missoes.existsById(envio.relatorio().missaoId())) throw erro("Missão inválida.");
         var tribo = tribos.findById(envio.relatorio().triboId()).orElseThrow(() -> erro("Tribo inválida."));
         if (!tribo.getNacao().getId().equals(envio.nacaoId())) throw erro("A tribo selecionada não pertence à nação informada.");
+        if (coordenador != null && !coordenador.podeAcessarTribo(tribo.getId(), tribo.getNacao().getId()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "O coordenador só pode enviar relatório para sua tribo ou nação.");
         if (quantidadeNomes(envio.nomesIntegrantes()) != envio.relatorio().quantidadePessoas()
                 || quantidadeNomes(envio.nomesNovosAfastados()) != envio.relatorio().quantidadeNovosAfastados())
             throw erro("As quantidades do relatório não correspondem aos nomes informados.");

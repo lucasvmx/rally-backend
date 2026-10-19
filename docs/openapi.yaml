@@ -311,6 +311,84 @@ paths:
                   $ref: '#/components/schemas/RespostaMissao'
         '401':
           $ref: '#/components/responses/NaoAutenticado'
+    post:
+      tags: [Dados do Rally]
+      summary: Cria missões a partir de dados revisados
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Recebe de 1 a 100
+        missões validadas pelo cliente e cria todas na mesma operação. A data
+        de início não pode ser posterior à data de fim. link_google_forms é
+        opcional; quando informado, deve ser um link HTTPS do Google Forms
+        aceito pelo serviço (forms.gle/<caminho> ou
+        docs.google.com/forms/<caminho>), sem porta explícita nem usuário na
+        URL. O escopo da role vem da sessão autenticada
+        ou do JWT em Authorization: Bearer, nunca de cabeçalhos definidos pelo
+        cliente.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoCriarMissoes'
+      responses:
+        '200':
+          description: Missões criadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaMissao'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+
+  /api/v1/missoes/interpretar:
+    post:
+      tags: [Dados do Rally]
+      summary: Interpreta uma mensagem de missões com a IA
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Envia o texto para a
+        IA configurada e retorna missões sugeridas para revisão; esta operação
+        não as cria. Links Google Forms encontrados na mensagem podem ser
+        associados às sugestões ou retornados para associação manual. A
+        interpretação de missões exige OPENROUTER_API_KEY e
+        OPENROUTER_MODELO_REGRAS configurados; se a configuração estiver
+        ausente ou a IA não conseguir produzir uma interpretação, a resposta é
+        503. A identidade e a role vêm da sessão autenticada ou do JWT em
+        Authorization: Bearer.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoInterpretacao'
+      responses:
+        '200':
+          description: Sugestões de missões retornadas pela IA
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaInterpretacaoMissoes'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '503':
+          description: Serviço de interpretação por IA indisponível ou não configurado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/relatorios:
     get:
@@ -693,8 +771,14 @@ paths:
   /api/v1/publico/formularios/{token}/respostas:
     post:
       tags: [Formulários públicos]
-      summary: Envia respostas de um formulário público
+      summary: Envia respostas de formulário como coordenador autenticado
       description: >-
+        Embora a definição do formulário possa ser consultada publicamente, o
+        envio exige uma identidade autenticada com role COORDENADOR_TRIBO ou
+        COORDENADOR_NACAO. O coordenador só pode enviar para uma tribo dentro
+        do escopo de tribo ou nação associado à identidade. A role e o escopo
+        são lidos da sessão Spring Security ou do JWT Authorization: Bearer;
+        cabeçalhos definidos pelo cliente não controlam a autorização.
         A parte dados é JSON e deve incluir
         relatorio, nacao_id, nomes_integrantes, nomes_novos_afastados,
         preenchido_por e respostas adicionais. relatorio.missao_id é escolhido
@@ -717,7 +801,9 @@ paths:
         identificar uma missão existente. O conteúdo da foto também precisa
         corresponder ao MIME type declarado. O arquivo deve ser JPEG, PNG ou
         WebP; o nome e a extensão do arquivo não determinam o formato aceito.
-      security: []
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
       parameters:
         - $ref: '#/components/parameters/TokenFormulario'
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -757,10 +843,12 @@ paths:
                     format: uuid
         '400':
           $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
         '403':
-          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
+          $ref: '#/components/responses/AcessoNegado'
 
   /api/v1/formularios/respostas/{id}:
     get:
@@ -854,8 +942,9 @@ components:
       required: true
       description: >-
         Token obtido do cookie XSRF-TOKEN após consultar GET
-        /api/v1/autenticacao/csrf. A proteção CSRF também se aplica ao formulário
-        público. Envie o
+        /api/v1/autenticacao/csrf. A proteção CSRF também se aplica ao envio de
+        formulário sob /api/v1/publico/formularios; esse envio requer coordenador
+        autenticado. Envie o
         cabeçalho e o cookie XSRF-TOKEN em métodos de escrita; o cookie de sessão
         também acompanha as requisições quando houver sessão autenticada.
       schema:
@@ -1102,6 +1191,7 @@ components:
         - bonificacao_meta_nacional
         - exige_foto
         - tipo_pessoa
+        - link_google_forms
         - status
         - versao
       properties:
@@ -1137,6 +1227,11 @@ components:
           type: boolean
         tipo_pessoa:
           type: string
+        link_google_forms:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: Link HTTPS opcional associado à missão.
         status:
           type: string
         versao:
@@ -1252,7 +1347,183 @@ components:
         texto:
           type: string
           minLength: 1
+          maxLength: 40000
           description: Texto não vazio nem composto apenas por espaços.
+    DadosMissao:
+      type: object
+      required:
+        - nome
+        - data_inicio
+        - data_fim
+        - pontos_por_pessoa
+        - pontos_por_novo_afastado
+        - bonificacao_a_cada_cinco_novos
+        - meta_nacional
+        - bonificacao_meta_nacional
+        - tipo_pessoa
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 180
+          description: Não pode ser vazio ou composto apenas por espaços.
+        descricao:
+          type: string
+          maxLength: 10000
+          nullable: true
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        prazo_envio:
+          type: string
+          description: Data e hora local de São Paulo, sem offset de fuso horário.
+          nullable: true
+        pontos_por_pessoa:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        pontos_por_novo_afastado:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        bonificacao_a_cada_cinco_novos:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        meta_nacional:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        bonificacao_meta_nacional:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        exige_foto:
+          type: boolean
+        tipo_pessoa:
+          type: string
+          enum: [integrante, novo_ou_afastado]
+        link_google_forms:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: >-
+            Opcional. Se não for nulo nem vazio, deve ser um link HTTPS de
+            forms.gle/<caminho> ou docs.google.com/forms/<caminho>; espaços
+            nas extremidades são removidos antes de salvar.
+    RequisicaoCriarMissoes:
+      type: object
+      required: [missoes]
+      properties:
+        missoes:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/DadosMissao'
+    RespostaInterpretacaoMissoes:
+      type: object
+      required: [origem, mensagem, texto_original, missoes, links_google_forms, ambiguidades]
+      description: >-
+        Retornada apenas quando a IA consegue interpretar a mensagem. Cada
+        sugestão é um objeto de dados de missão; revise as sugestões e
+        ambiguidades antes de enviá-las para criação.
+      properties:
+        origem:
+          type: string
+          enum: [OPENROUTER]
+        mensagem:
+          type: string
+        texto_original:
+          type: string
+        missoes:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MissaoSugerida'
+        links_google_forms:
+          type: array
+          description: Links Google Forms HTTPS reconhecidos na mensagem original.
+          items:
+            type: string
+            maxLength: 2048
+        ambiguidades:
+          type: array
+          items:
+            type: string
+    MissaoSugerida:
+      type: object
+      description: >-
+        Objeto estruturado retornado pela IA. Limites de tamanho e validações
+        de entrada são aplicados quando a sugestão é enviada para criação.
+      required:
+        - nome
+        - descricao
+        - data_inicio
+        - data_fim
+        - prazo_envio
+        - pontos_por_pessoa
+        - pontos_por_novo_afastado
+        - bonificacao_a_cada_cinco_novos
+        - meta_nacional
+        - bonificacao_meta_nacional
+        - exige_foto
+        - tipo_pessoa
+        - link_google_forms
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          nullable: true
+        descricao:
+          type: string
+          nullable: true
+        data_inicio:
+          type: string
+          format: date
+          nullable: true
+        data_fim:
+          type: string
+          format: date
+          nullable: true
+        prazo_envio:
+          type: string
+          description: Data e hora local de São Paulo, sem offset de fuso horário.
+          nullable: true
+        pontos_por_pessoa:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        pontos_por_novo_afastado:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        bonificacao_a_cada_cinco_novos:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        meta_nacional:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        bonificacao_meta_nacional:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        exige_foto:
+          type: boolean
+        tipo_pessoa:
+          type: string
+          enum: [integrante, novo_ou_afastado]
+        link_google_forms:
+          type: string
+          maxLength: 2048
+          nullable: true
+          description: Link HTTPS extraído da mensagem; nulo quando não associado.
     RespostaInterpretacao:
       type: object
       required: [origem, mensagem, texto_original, regras, ambiguidades]
