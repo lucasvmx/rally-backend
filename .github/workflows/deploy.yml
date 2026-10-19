@@ -15,7 +15,7 @@ concurrency:
 jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, rally]
     timeout-minutes: 45
 
     steps:
