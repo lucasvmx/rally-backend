@@ -40,8 +40,13 @@ class FormulariosControllerTest {
     @Test
     void geraSegredoCriptograficoDiferenteParaCadaPublicacao() {
         var definicao = new FormulariosController.Definicao(missao, "Relatório", "", List.of());
-        var primeiro = controller.criar(definicao, new MockHttpServletRequest());
-        var segundo = controller.criar(definicao, new MockHttpServletRequest());
+        var requisicao = new MockHttpServletRequest();
+        var jwt = Jwt.withTokenValue("token").header("alg", "HS256")
+            .subject(UUID.randomUUID().toString()).claim("role", "ADMINISTRADOR_SISTEMA").build();
+        requisicao.setUserPrincipal(new JwtAuthenticationToken(jwt,
+            List.of(new SimpleGrantedAuthority("ROLE_ADMINISTRADOR_SISTEMA"))));
+        var primeiro = controller.criar(definicao, requisicao);
+        var segundo = controller.criar(definicao, requisicao);
         assertThat(primeiro.token()).matches("[a-f0-9]{64}").isNotEqualTo(segundo.token());
         assertThat(primeiro.ativo()).isTrue();
     }
