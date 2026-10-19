@@ -16,7 +16,10 @@ info:
     de demonstração. A role e o escopo são obtidos da identidade autenticada,
     não de cabeçalhos definidos pelo cliente. O modo de demonstração é o padrão
     da configuração geral
-    (RALLY_MODO_DEMONSTRACAO=true); o perfil de produção o desativa.
+    (RALLY_MODO_DEMONSTRACAO=true); o perfil de produção o desativa. As
+    declarações de segurança abaixo descrevem a exigência de produção; no modo
+    de demonstração, as verificações adicionais de role e escopo seguem o
+    comportamento descrito em cada operação.
 servers:
   - url: http://localhost:8080
     description: Execução local padrão
@@ -27,13 +30,20 @@ tags:
   - name: Relatórios
   - name: Regras
   - name: Formulários
+    description: >-
+      As respostas sob /api/v1/formularios recebem Cache-Control: no-store,
+      X-Robots-Tag: noindex, nofollow, noarchive e
+      Referrer-Policy: no-referrer.
   - name: Formulários públicos
+    description: >-
+      As respostas sob /api/v1/publico/formularios recebem Cache-Control:
+      no-store, X-Robots-Tag: noindex, nofollow, noarchive e
+      Referrer-Policy: no-referrer.
   - name: Usuários
 
 security:
   - bearerJwt: []
   - sessaoAplicacao: []
-  - {}
 
 paths:
   /api/v1/autenticacao/csrf:
@@ -43,13 +53,21 @@ paths:
       description: >-
         Retorna 204 sem corpo e materializa o token CSRF no cookie XSRF-TOKEN
         quando necessário. Para requisições de escrita protegidas por CSRF, o
-        cliente deve enviar o valor do cookie no cabeçalho X-XSRF-TOKEN. O cookie
-        é legível por JavaScript; SameSite é Lax e Secure depende da configuração
-        do cookie de sessão (ativado no perfil de produção).
+        cliente deve enviar o valor do cookie no cabeçalho X-XSRF-TOKEN. O cookie é legível
+        por JavaScript; SameSite é Lax e Secure acompanha a configuração do cookie
+        de sessão (ativado no perfil de produção). A proteção CSRF continua ativa
+        no modo de demonstração.
       security: []
       responses:
         '204':
           description: Token CSRF inicializado; não há corpo de resposta
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: >-
+                Pode definir o cookie XSRF-TOKEN, legível por JavaScript e com
+                SameSite=Lax; Secure acompanha a configuração da sessão.
 
   /api/v1/autenticacao/sessao:
     get:
@@ -67,6 +85,10 @@ paths:
         rota com a sessão do navegador e recebe role, os IDs de escopo
         (tribe_id ou nation_id) e access_token no corpo JSON. O token não é
         enviado na URL.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+        - {}
       responses:
         '200':
           description: Estado atual da sessão
@@ -74,6 +96,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RespostaSessao'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
 
   /api/v1/autenticacao/login:
     post:
@@ -136,7 +160,7 @@ paths:
               example:
                 mensagem: Conta bloqueada após três tentativas incorretas. Entre com Google para redefinir a senha e recuperar o acesso.
         '403':
-          description: Token CSRF ausente ou inválido
+          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
   /api/v1/autenticacao/logout:
     post:
@@ -166,7 +190,7 @@ paths:
               example:
                 mensagem: Autenticação necessária.
         '403':
-          description: Token CSRF ausente ou inválido
+          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
   /api/v1/autenticacao/senha/google:
     get:
@@ -195,17 +219,20 @@ paths:
       tags: [Autenticação]
       summary: Cria, redefine ou desbloqueia a senha local
       description: >-
-        Requer autenticação OAuth2 do Google, e-mail verificado e autorização
-        do e-mail na lista de assistentes configurada (RALLY_ASSISTENTES). Uma
-        sessão local não é suficiente. A senha deve ter de 12 a 128 caracteres
+        Requer uma identidade Google autenticada com e-mail verificado vinculada
+        a uma conta Rally existente ou provisionada pela configuração de
+        assistentes/administrador inicial. A operação também aceita um JWT
+        emitido pelo backend para essa identidade Google; sessão local sem
+        provedor Google não é suficiente. A senha deve ter de 12 a 128 caracteres
         e no máximo 72 bytes em UTF-8. A operação cria ou atualiza a conta local,
         zera o contador de falhas e remove o bloqueio existente. Não há rota
         separada de recuperação: o fluxo GET /api/v1/autenticacao/senha/google
         conduz a esta operação. No modo de demonstração a cadeia de segurança
-        permite a requisição, mas o controller ainda exige uma identidade OAuth2
-        Google verificada e autorizada. Cabeçalhos de autenticação de API usam
+        permite a requisição, mas o controller ainda exige identidade Google
+        verificada e vinculada/autorizada. Cabeçalhos de autenticação de API usam
         o nome HTTP em inglês Authorization, com Bearer para JWT.
       security:
+        - bearerJwt: []
         - sessaoAplicacao: []
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -234,8 +261,13 @@ paths:
                 mensagem: Autenticação necessária.
         '403':
           description: >-
-            Sessão não autenticada pelo Google, e-mail não verificado ou conta
-            fora da lista de assistentes; também pode indicar falha de CSRF
+            Identidade Google sem e-mail verificado ou não vinculada a uma conta
+            autorizada do Rally; também pode indicar falha de CSRF, que pode
+            ser respondida sem corpo pelo filtro Spring Security
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/saude:
     get:
@@ -263,6 +295,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaNacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
 
   /api/v1/tribos:
     get:
@@ -277,6 +311,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaTribo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
 
   /api/v1/missoes:
     get:
@@ -291,11 +327,13 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaMissao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
 
   /api/v1/relatorios:
     get:
       tags: [Relatórios]
-      summary: Lista relatórios visíveis para a role da identidade autenticada
+      summary: Lista relatórios visíveis para a role do contexto de acesso
       description: >-
         A role e seu escopo são obtidos da identidade autenticada, incluindo do
         JWT apresentado em Authorization: Bearer. ASSISTENTE e
@@ -313,8 +351,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaRelatorio'
-        '400':
-          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
     post:
       tags: [Relatórios]
       summary: Envia um relatório
@@ -325,6 +365,8 @@ paths:
         Authorization: Bearer ou da identidade Spring Security. No modo de
         demonstração, uma requisição sem identidade autenticada usa o
         COORDENADOR_TRIBO da tribo informada no corpo.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
         content:
@@ -338,6 +380,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RespostaRelatorio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '403':
@@ -349,9 +393,13 @@ paths:
     post:
       tags: [Relatórios]
       summary: Aprova um relatório
-      description: Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
+      description: >-
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Em modo de demonstração, uma requisição sem identidade usa o contexto
+        ASSISTENTE.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: false
         content:
@@ -365,6 +413,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RespostaRelatorio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '403':
@@ -376,9 +426,13 @@ paths:
     post:
       tags: [Relatórios]
       summary: Rejeita um relatório
-      description: Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
+      description: >-
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Em modo de demonstração, uma requisição sem identidade usa o contexto
+        ASSISTENTE.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: false
         content:
@@ -392,6 +446,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RespostaRelatorio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '403':
@@ -409,10 +465,18 @@ paths:
         a tribo ou nação do relatório, além de uma sessão Google com autorização
         para o Drive. Para autenticação por JWT, use Authorization: Bearer; o
         token de usuário Google contém a referência necessária para localizar a
-        autorização OAuth do Drive. O limite de arquivo configurado pelo servidor
-        Spring é 15 MB.
+        autorização OAuth do Drive. O limite configurado no Spring é 15 MB por
+        arquivo e 80 MB para a requisição multipart. No perfil de produção, o
+        cliente OAuth Google usa os escopos openid, profile, email e
+        https://www.googleapis.com/auth/drive.file. Se
+        GOOGLE_DRIVE_PASTA_CENTRAL estiver configurada, o upload usa essa pasta
+        como raiz; se estiver vazia, localiza ou cria a pasta Rally. Em modo de
+        demonstração, a autorização de escopo usa o contexto ASSISTENTE
+        quando não há identidade; ainda é necessária autorização Google para o
+        Drive para concluir o envio.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
         content:
@@ -432,6 +496,8 @@ paths:
             text/plain:
               schema:
                 type: string
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '403':
@@ -464,11 +530,15 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaPlacar'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
 
   /api/v1/regras/interpretar:
     post:
       tags: [Regras]
       summary: Interpreta um texto de regras
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
         content:
@@ -482,21 +552,30 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RespostaInterpretacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
+        '403':
+          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
   /api/v1/usuarios/{email}/role:
     put:
       tags: [Usuários]
       summary: Define a role e o escopo de um usuário
       description: >-
-        Requer a role ADMINISTRADOR_SISTEMA na identidade autenticada. Envie o
-        JWT no cabeçalho HTTP Authorization com o esquema Bearer. Para
-        COORDENADOR_TRIBO, tribe_id é obrigatório e nation_id deve ser omitido;
+        Requer a role ADMINISTRADOR_SISTEMA no contexto autenticado; aceita a
+        sessão da aplicação ou JWT no cabeçalho HTTP Authorization com o esquema
+        Bearer. Para COORDENADOR_TRIBO, tribe_id é obrigatório e nation_id deve
+        ser omitido;
         para COORDENADOR_NACAO, nation_id é obrigatório e tribe_id deve ser
         omitido. ASSISTENTE e ADMINISTRADOR_SISTEMA não aceitam IDs de escopo.
         Os IDs de tribo ou nação precisam existir. O administrador inicial
-        definido pela configuração não pode perder ADMINISTRADOR_SISTEMA.
+        definido pela configuração não pode perder ADMINISTRADOR_SISTEMA. O
+        e-mail do caminho é aparado e normalizado para minúsculas; a operação
+        cria ou atualiza o perfil de acesso. No modo de demonstração, uma
+        requisição sem identidade usa o contexto ASSISTENTE e não satisfaz a
+        exigência de administrador.
       security:
         - bearerJwt: []
         - sessaoAplicacao: []
@@ -530,23 +609,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/RespostaUsuario'
         '400':
-          description: Role inválida, escopo incompatível ou ID de tribo/nação inexistente
+          $ref: '#/components/responses/ErroRequisicao'
         '401':
-          description: Autenticação necessária fora do modo de demonstração
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
-          description: >-
-            Identidade sem role ADMINISTRADOR_SISTEMA ou token CSRF ausente ou
-            inválido
+          $ref: '#/components/responses/AcessoNegado'
         '409':
           description: O administrador inicial configurado não pode perder sua role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/formularios:
     get:
       tags: [Formulários]
       summary: Lista formulários públicos cadastrados
       description: >-
-        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
-        autenticada. Em produção, uma sessão Google precisa ter e-mail
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Em produção, uma sessão Google precisa ter e-mail
         verificado e estar autorizada; também é aceito JWT em Authorization:
         Bearer. Em modo de demonstração, a verificação de role usa o contexto
         ASSISTENTE quando não há identidade autenticada.
@@ -559,6 +640,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Formulario'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
     post:
@@ -567,11 +650,17 @@ paths:
       description: >-
         Um formulário é um link de coleta, normalmente mensal, e não fica
         associado a uma missão. ASSISTENTE ou ADMINISTRADOR_SISTEMA pode criar
-        a definição com uma lista vazia de campos adicionais. Cada envio escolhe a própria missão.
+        a definição com uma lista vazia de campos adicionais. Cada envio escolhe
+        a própria missão. IDs de campo devem ser únicos e não podem ser
+        nomes_integrantes, nomes_novos_afastados ou preenchido_por. Campo do tipo
+        selecao precisa conter pelo menos uma opção. Em modo de demonstração,
+        uma requisição sem identidade usa o contexto ASSISTENTE.
         Novos requests omitem missao_id. Nas respostas de formulários novos,
         o record inclui missao_id nulo; definições antigas ainda podem trazer
         um UUID. O controller também tolera missao_id em um request de criação
         legado, mas descarta o valor ao persistir um formulário novo.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
         content:
@@ -589,6 +678,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Formulario'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '403':
@@ -599,14 +690,19 @@ paths:
       tags: [Formulários]
       summary: Desativa um formulário público
       description: >-
-        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
-        autenticada. Em modo de demonstração, uma requisição sem identidade
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Em modo de demonstração, uma requisição sem identidade
         autenticada usa o contexto ASSISTENTE.
       parameters:
         - $ref: '#/components/parameters/FormularioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       responses:
         '200':
-          description: Formulário desativado; resposta sem corpo
+          description: >-
+            Requisição concluída sem corpo. O controller não verifica se o UUID
+            correspondeu a um formulário existente.
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
 
@@ -640,19 +736,26 @@ paths:
         neste envio, sem vínculo com a definição do formulário. As quantidades
         em relatorio são contadas pelas linhas não vazias dos campos de nomes;
         uma linha contendo apenas "nenhum" (sem diferenciar maiúsculas) também
-        não conta. Definições legadas que ainda tenham missao_id continuam
+        não conta. As respostas adicionais devem usar IDs definidos no
+        formulário, ter até 5.000 caracteres cada e respeitar os campos
+        obrigatórios; valores do tipo numero devem ser decimais válidos e
+        selecao deve corresponder a uma das opções definidas. Definições
+        legadas que ainda tenham missao_id continuam
         restringindo os envios àquela missão.
         nomes_integrantes, nomes_novos_afastados e preenchido_por são
         obrigatórios. A parte arquivo é obrigatória e aceita uma única imagem
-        JPEG, PNG ou WebP de até 5 MB. Os valores fixos de nomes e responsável
+        JPEG, PNG ou WebP de até 5 MiB (5.242.880 bytes). Os valores fixos de
+        nomes e responsável
         são gravados também em respostas sob as chaves
         nomes_integrantes, nomes_novos_afastados e preenchido_por.
         nacao_id deve corresponder à nação da tribo informada; missao_id deve
         identificar uma missão existente. O conteúdo da foto também precisa
-        corresponder ao MIME type declarado.
+        corresponder ao MIME type declarado. O arquivo deve ser JPEG, PNG ou
+        WebP; o nome e a extensão do arquivo não determinam o formato aceito.
       security: []
       parameters:
         - $ref: '#/components/parameters/TokenFormulario'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
         content:
@@ -668,8 +771,11 @@ paths:
                   format: binary
                   description: >-
                     Uma única imagem obrigatória JPEG, PNG ou WebP, com até
-                    5 MB. O conteúdo deve corresponder ao tipo informado.
+                    5 MiB (5.242.880 bytes). O conteúdo deve corresponder ao
+                    tipo informado.
             encoding:
+              arquivo:
+                contentType: image/jpeg, image/png, image/webp
               dados:
                 contentType: application/json
       responses:
@@ -688,28 +794,37 @@ paths:
           $ref: '#/components/responses/ErroRequisicao'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
+        '403':
+          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
   /api/v1/formularios/respostas/{id}:
     get:
       tags: [Formulários]
       summary: Consulta respostas do formulário recebidas pela assistente
       description: >-
-        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade
-        autenticada. O mapa respostas contém os valores fixos
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        O mapa respostas contém os valores fixos
         nomes_integrantes, nomes_novos_afastados e preenchido_por, além das
         respostas adicionais. Registros antigos podem continuar trazendo
-        missao_id na definição.
+        missao_id na definição. Em modo de demonstração, uma requisição sem
+        identidade usa o contexto ASSISTENTE. Em produção, o acesso aos nomes,
+        às respostas e à presença de foto fica restrito às roles ASSISTENTE e
+        ADMINISTRADOR_SISTEMA.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
       responses:
         '200':
-          description: Respostas associadas ao relatório
+          description: >-
+            Respostas associadas ao relatório. Se não houver resposta de
+            formulário para o identificador, retorna uma lista vazia.
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaFormulario'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
 
@@ -717,7 +832,10 @@ paths:
     get:
       tags: [Formulários]
       summary: Obtém a foto enviada com as respostas
-      description: Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA na identidade autenticada.
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Em modo de demonstração, uma requisição sem identidade usa o contexto
+        ASSISTENTE; em produção, somente essas roles acessam a imagem pessoal.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
       responses:
@@ -741,6 +859,8 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
         '404':
@@ -755,15 +875,19 @@ components:
       description: >-
         Envie o access_token no cabeçalho HTTP Authorization: Bearer. O servidor
         valida o JWT HS256, o emissor, a audiência e a validade temporal. Tokens
-        emitidos pelo backend expiram 15 minutos após a emissão.
+        emitidos pelo backend expiram 15 minutos após a emissão. A autenticação
+        Bearer é habilitada no perfil de produção, não no modo de demonstração.
     sessaoAplicacao:
       type: apiKey
       in: cookie
       name: JSESSIONID
       description: >-
         Cookie de sessão do Spring Security após login local ou OAuth2 Login do
-        Google. Aplicável quando RALLY_MODO_DEMONSTRACAO=false; no modo de
-        demonstração a cadeia Spring Security permite as requisições.
+        Google. Em produção, o cookie é HttpOnly, SameSite=Lax e Secure; a
+        cadeia exige sessão ou JWT nas rotas privadas. Aplicável quando
+        RALLY_MODO_DEMONSTRACAO=false; no modo de demonstração a cadeia Spring
+        Security permite as requisições e cabeçalhos de demonstração não são
+        usados como credenciais.
   parameters:
     CabecalhoCsrf:
       name: X-XSRF-TOKEN
@@ -771,8 +895,10 @@ components:
       required: true
       description: >-
         Token obtido do cookie XSRF-TOKEN após consultar GET
-        /api/v1/autenticacao/csrf. Envie este cabeçalho nas requisições de
-        escrita; o cookie também deve acompanhar a sessão do navegador.
+        /api/v1/autenticacao/csrf. A proteção CSRF permanece ativa em modo de
+        demonstração e produção, também para o formulário público. Envie o
+        cabeçalho e o cookie XSRF-TOKEN em métodos de escrita; o cookie de sessão
+        também acompanha as requisições quando houver sessão autenticada.
       schema:
         type: string
     EmailUsuario:
@@ -807,14 +933,31 @@ components:
         type: string
         pattern: '^[a-f0-9]{64}$'
   responses:
+    NaoAutenticado:
+      description: >-
+        Autenticação necessária nas instalações com RALLY_MODO_DEMONSTRACAO=false.
+        A API retorna application/json com a propriedade mensagem; no modo de
+        demonstração as requisições são permitidas pela cadeia de segurança.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            mensagem: Autenticação necessária.
     ErroRequisicao:
-      description: Requisição inválida ou dados rejeitados pela validação
+      description: >-
+        Requisição inválida. Erros de negócio tratados pela API incluem a
+        propriedade mensagem; erros automáticos de validação seguem o formato
+        do Spring e podem incluir outras propriedades.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Erro'
     AcessoNegado:
-      description: Acesso negado para o papel ou sessão atual
+      description: >-
+        Acesso negado para o papel ou escopo atual. Erros de autorização tratados
+        pelos serviços retornam JSON com mensagem. Falhas CSRF ou rejeições pelo
+        filtro Spring Security podem ser respondidas sem corpo JSON.
       content:
         application/json:
           schema:
@@ -832,8 +975,10 @@ components:
       properties:
         email:
           type: string
+          format: email
           minLength: 1
           maxLength: 255
+          description: E-mail aparado e convertido para minúsculas antes da consulta.
         senha:
           type: string
           minLength: 1
@@ -951,6 +1096,7 @@ components:
           description: Mensagem da falha retornada pelo handler de exceções da API.
     RespostaSaude:
       type: object
+      required: [status, servico, idioma]
       properties:
         status:
           type: string
@@ -963,6 +1109,7 @@ components:
           example: pt-BR
     RespostaNacao:
       type: object
+      required: [id, nome]
       properties:
         id:
           type: string
@@ -971,12 +1118,15 @@ components:
           type: string
     RespostaTribo:
       type: object
+      required: [id, nome, ativa, nacao_id, nacao_nome]
       properties:
         id:
           type: string
           format: uuid
         nome:
           type: string
+        ativa:
+          type: boolean
         nacao_id:
           type: string
           format: uuid
@@ -984,6 +1134,22 @@ components:
           type: string
     RespostaMissao:
       type: object
+      required:
+        - id
+        - nome
+        - descricao
+        - data_inicio
+        - data_fim
+        - prazo_envio
+        - pontos_por_pessoa
+        - pontos_por_novo_afastado
+        - bonificacao_a_cada_cinco_novos
+        - meta_nacional
+        - bonificacao_meta_nacional
+        - exige_foto
+        - tipo_pessoa
+        - status
+        - versao
       properties:
         id:
           type: string
@@ -1044,6 +1210,21 @@ components:
           nullable: true
     RespostaRelatorio:
       type: object
+      required:
+        - id
+        - missao_id
+        - missao_nome
+        - tribo_id
+        - tribo_nome
+        - nacao_nome
+        - quantidade_pessoas
+        - quantidade_novos_afastados
+        - observacoes
+        - enviado_em
+        - atrasado
+        - status
+        - pontos_aprovados
+        - justificativa_revisao
       properties:
         id:
           type: string
@@ -1087,6 +1268,7 @@ components:
           nullable: true
     RespostaPlacar:
       type: object
+      required: [posicao, tribo_id, tribo_nome, nacao_nome, pontos, pessoas_aprovadas, relatorios_aprovados, bonus_nacional]
       properties:
         posicao:
           type: integer
@@ -1116,17 +1298,26 @@ components:
         texto:
           type: string
           minLength: 1
+          description: Texto não vazio nem composto apenas por espaços.
     RespostaInterpretacao:
       type: object
+      required: [origem, mensagem, texto_original, regras, ambiguidades]
+      description: >-
+        A origem é OPENROUTER quando a consulta configurada funciona e
+        FALLBACK_LOCAL quando OpenRouter não está configurado ou falha. O
+        conteúdo de cada item de regras é definido pelo interpretador; somente
+        as chaves nome_missao e exige_foto são exigidas na resposta da IA.
       properties:
         origem:
           type: string
+          enum: [OPENROUTER, FALLBACK_LOCAL]
         mensagem:
           type: string
         texto_original:
           type: string
         regras:
           type: array
+          minItems: 1
           items:
             type: object
             additionalProperties: true
@@ -1140,10 +1331,14 @@ components:
       properties:
         id:
           type: string
+          minLength: 1
           maxLength: 80
+          description: Valor não pode ser vazio nem composto somente por espaços.
         titulo:
           type: string
+          minLength: 1
           maxLength: 200
+          description: Valor não pode ser vazio nem composto somente por espaços.
         tipo:
           type: string
           enum: [texto, paragrafo, numero, selecao]
@@ -1152,17 +1347,30 @@ components:
           default: false
         opcoes:
           type: array
+          nullable: true
           maxItems: 50
           items:
             type: string
+            minLength: 1
             maxLength: 200
+            description: Valor não pode ser vazio nem composto somente por espaços.
     DefinicaoFormulario:
       type: object
       required: [titulo, campos]
       properties:
+        missao_id:
+          type: string
+          format: uuid
+          nullable: true
+          deprecated: true
+          description: >-
+            Campo legado aceito na criação, mas ignorado; formulários novos
+            são salvos sem missão associada.
         titulo:
           type: string
+          minLength: 1
           maxLength: 200
+          description: Valor não pode ser vazio nem composto somente por espaços.
         descricao:
           type: string
           maxLength: 3000
@@ -1189,6 +1397,7 @@ components:
                 nulo em formulários criados sem associação a missão.
     Formulario:
       type: object
+      required: [id, token, ativo, definicao]
       properties:
         id:
           type: string
@@ -1207,7 +1416,7 @@ components:
         da quantidade de linhas não vazias em nomes_integrantes e
         nomes_novos_afastados, respectivamente. Cada lista aceita no máximo
         200 nomes.
-      required: [missao_id, tribo_id, quantidade_pessoas, quantidade_novos_afastados]
+      required: [missao_id, tribo_id]
       properties:
         missao_id:
           type: string
@@ -1218,9 +1427,11 @@ components:
         quantidade_pessoas:
           type: integer
           minimum: 0
+          default: 0
         quantidade_novos_afastados:
           type: integer
           minimum: 0
+          default: 0
         observacoes:
           type: string
           nullable: true
@@ -1260,6 +1471,7 @@ components:
           maxProperties: 30
           additionalProperties:
             type: string
+            maxLength: 5000
     FormularioPublico:
       type: object
       required: [definicao, nacoes, tribos, missoes, exige_foto]
@@ -1283,6 +1495,7 @@ components:
           enum: [true]
     RespostaFormulario:
       type: object
+      required: [respostas, definicao, tem_foto]
       properties:
         respostas:
           type: object
