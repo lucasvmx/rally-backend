@@ -89,7 +89,7 @@ public class FormulariosController {
         Formulario form = buscar(token);
         return Map.of("definicao", form.definicao(),
             "nacoes", nacoes.findAll().stream().map(RespostaNacao::de).toList(),
-            "tribos", tribos.findAll().stream().map(RespostaTribo::de).toList(),
+            "tribos", tribos.buscarTodasComNacao().stream().map(RespostaTribo::de).toList(),
             "missoes", missoes.findAll().stream().map(RespostaMissao::de).toList(),
             "exige_foto", true);
     }

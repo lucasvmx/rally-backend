@@ -59,7 +59,7 @@ public class RallyController {
 
     @GetMapping("/tribos")
     public List<RespostaTribo> tribos() {
-        return triboRepositorio.findAll().stream().map(RespostaTribo::de).toList();
+        return triboRepositorio.buscarTodasComNacao().stream().map(RespostaTribo::de).toList();
     }
 
     @GetMapping("/missoes")
