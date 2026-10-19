@@ -28,7 +28,7 @@ As orientações de execução, formulários públicos, Google Drive e plano tec
 
 ## CI/CD na VPS
 
-O workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) executa `mvn verify` e implanta a branch `main` com `make deploy` em um runner Linux self-hosted. O runner precisa ter Java 25, Maven 3.9 ou posterior, GNU Make 4.x e Docker Compose. Também é possível iniciar a implantação manualmente pela aba **Actions** do GitHub, selecionando a branch `main`.
+O workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) configura Temurin 25, executa `mvn verify` e implanta a branch `main` com `make deploy` em um runner Linux self-hosted. O runner precisa ter Maven 3.9 ou posterior, GNU Make 4.x e Docker Compose; para baixar o JDK, também precisa acessar os servidores de distribuição do Java. Também é possível iniciar a implantação manualmente pela aba **Actions** do GitHub, selecionando a branch `main`.
 
 Configure os secrets do repositório `POSTGRES_PASSWORD`, `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID` e `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET`. `OPENROUTER_API_KEY` também pode ser cadastrado como secret. As configurações não secretas podem ser cadastradas como variables, incluindo `POSTGRES_DB`, `POSTGRES_USER`, `RALLY_BACKEND_PORT`, `RALLY_FRONTEND_ORIGIN`, `RALLY_ASSISTENTES`, `RALLY_BACKEND_IMAGE`, `OPENROUTER_MODELO_REGRAS`, `OPENROUTER_MODELO_FOTOS`, `OPENROUTER_MODELOS_RESERVA` e `GOOGLE_DRIVE_PASTA_CENTRAL`. Se `RALLY_BACKEND_PORT` não for definido, o workflow usa `127.0.0.1:8082`, conforme o proxy Nginx de produção.
 
