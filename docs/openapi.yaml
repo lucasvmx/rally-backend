@@ -3,17 +3,22 @@ info:
   title: API Rally das Tribos
   version: 1.0.0
   description: >-
-    API REST do Rally das Tribos. O backend usa JSON em snake_case. Em modo de
-    produção, rotas privadas exigem sessão autenticada pelo OAuth2 Login do
-    Google; o acesso administrativo a formulários também verifica o e-mail
-    verificado contra a lista de assistentes configurada. No modo de demonstração,
-    a autenticação Spring Security é desativada e as operações que leem o contexto
-    de acesso usam os cabeçalhos X-Papel e X-Tribo-Id, conforme descrito em cada
-    operação.
+    API REST do Rally das Tribos. O backend usa JSON em snake_case. Fora do modo
+    de demonstração, rotas privadas usam uma sessão Spring Security, iniciada
+    por login local com e-mail e senha ou pelo OAuth2 Login do Google. O acesso
+    administrativo exige que a conta esteja na lista de assistentes configurada;
+    o fluxo Google também exige e-mail verificado. No modo de demonstração, a
+    cadeia Spring Security permite as requisições e a consulta de sessão informa
+    uma sessão de demonstração. As operações que leem o contexto de acesso usam
+    os cabeçalhos X-Papel e X-Tribo-Id, conforme descrito em cada operação; esses
+    cabeçalhos não são controles de autenticação seguros. O modo de demonstração
+    é o padrão da configuração geral (RALLY_MODO_DEMONSTRACAO=true); o perfil de
+    produção o desativa.
 servers:
   - url: http://localhost:8080
     description: Execução local padrão
 tags:
+  - name: Autenticação
   - name: Saúde
   - name: Dados do Rally
   - name: Relatórios
@@ -22,10 +27,198 @@ tags:
   - name: Formulários públicos
 
 security:
-  - sessaoGoogle: []
+  - sessaoAplicacao: []
   - {}
 
 paths:
+  /api/v1/autenticacao/csrf:
+    get:
+      tags: [Autenticação]
+      summary: Inicializa o token CSRF do navegador
+      description: >-
+        Retorna 204 sem corpo e materializa o token CSRF no cookie XSRF-TOKEN
+        quando necessário. Para requisições de escrita protegidas por CSRF, o
+        cliente deve enviar o valor do cookie no cabeçalho X-XSRF-TOKEN. O cookie
+        é legível por JavaScript; SameSite é Lax e Secure depende da configuração
+        do cookie de sessão (ativado no perfil de produção).
+      security: []
+      responses:
+        '204':
+          description: Token CSRF inicializado; não há corpo de resposta
+
+  /api/v1/autenticacao/sessao:
+    get:
+      tags: [Autenticação]
+      summary: Consulta a sessão atual
+      description: >-
+        É público e retorna 200 tanto para uma sessão anônima quanto para uma
+        sessão autenticada. No modo de demonstração, autenticado será true,
+        provedor será DEMONSTRACAO e email_verificado será true mesmo sem uma
+        identidade de usuário autenticada pelo Spring Security. Em produção,
+        a resposta identifica sessões locais como LOCAL e sessões Google como
+        GOOGLE.
+      security: []
+      responses:
+        '200':
+          description: Estado atual da sessão
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaSessao'
+
+  /api/v1/autenticacao/login:
+    post:
+      tags: [Autenticação]
+      summary: Inicia uma sessão local com e-mail e senha
+      description: >-
+        Aceita contas de acesso existentes cujo e-mail esteja autorizado na
+        configuração de assistentes (RALLY_ASSISTENTES). E-mails são aparados e
+        normalizados para minúsculas para a consulta. A senha tem limite de 128
+        caracteres e de 72 bytes em UTF-8. A primeira e a segunda falha retornam
+        401 e informam que a conta será bloqueada após três tentativas. A terceira
+        senha incorreta bloqueia a conta e já retorna 423; novas tentativas
+        também retornam 423. Falhas para conta inexistente ou não autorizada
+        retornam 401, mas não incrementam o contador de bloqueio. Um login local
+        correto zera o contador. No modo de demonstração a rota ainda tenta
+        autenticar a conta local, mas a resposta de sessão é apresentada como
+        DEMONSTRACAO e a cadeia de segurança permite as demais requisições.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoLogin'
+      responses:
+        '200':
+          description: Login local concluído; o navegador mantém a sessão por cookie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaSessao'
+        '400':
+          description: >-
+            Corpo inválido ou senha com mais de 72 bytes em UTF-8. Erros de
+            validação automática seguem o formato do Spring.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '401':
+          description: E-mail ou senha incorretos; a resposta informa o bloqueio após três falhas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                mensagem: E-mail ou senha incorretos. Após três tentativas, a conta será bloqueada.
+        '423':
+          description: Conta bloqueada após três tentativas incorretas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                mensagem: Conta bloqueada após três tentativas incorretas. Entre com Google para redefinir a senha e recuperar o acesso.
+        '403':
+          description: Token CSRF ausente ou inválido
+
+  /api/v1/autenticacao/logout:
+    post:
+      tags: [Autenticação]
+      summary: Encerra a sessão atual
+      description: >-
+        Executa o logout do Spring Security e retorna sem corpo. Em produção,
+        as rotas privadas exigem sessão; no modo de demonstração as requisições
+        são permitidas mesmo sem uma sessão autenticada.
+      security:
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Logout concluído; não há corpo de resposta
+        '401':
+          description: Autenticação necessária fora do modo de demonstração
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                mensagem: Autenticação necessária.
+        '403':
+          description: Token CSRF ausente ou inválido
+
+  /api/v1/autenticacao/senha/google:
+    get:
+      tags: [Autenticação]
+      summary: Inicia o fluxo Google para criar ou recuperar senha local
+      description: >-
+        Em produção, marca a sessão para que, após a autenticação OAuth2 do
+        Google, o navegador seja redirecionado a /definir-senha. A senha é então
+        enviada a PUT /api/v1/autenticacao/senha. Esse fluxo cria ou substitui a
+        senha local, zera as falhas e remove um bloqueio. No modo de demonstração
+        esta rota redireciona diretamente para / e não inicia OAuth.
+      security: []
+      responses:
+        '302':
+          description: Redirecionamento para iniciar o fluxo ou retornar à página inicial
+          headers:
+            Location:
+              schema:
+                type: string
+              description: >-
+                Em produção, /oauth2/authorization/google; no modo de
+                demonstração, /.
+
+  /api/v1/autenticacao/senha:
+    put:
+      tags: [Autenticação]
+      summary: Cria, redefine ou desbloqueia a senha local
+      description: >-
+        Requer autenticação OAuth2 do Google, e-mail verificado e autorização
+        do e-mail na lista de assistentes configurada (RALLY_ASSISTENTES). Uma
+        sessão local não é suficiente. A senha deve ter de 12 a 128 caracteres
+        e no máximo 72 bytes em UTF-8. A operação cria ou atualiza a conta local,
+        zera o contador de falhas e remove o bloqueio existente. Não há rota
+        separada de recuperação: o fluxo GET /api/v1/autenticacao/senha/google
+        conduz a esta operação. No modo de demonstração a cadeia de segurança
+        permite a requisição, mas o controller ainda exige uma identidade OAuth2
+        Google verificada e autorizada.
+      security:
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoDefinirSenha'
+      responses:
+        '204':
+          description: Senha definida; não há corpo de resposta
+        '400':
+          description: Corpo inválido ou senha com mais de 72 bytes em UTF-8
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '401':
+          description: Autenticação necessária fora do modo de demonstração
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                mensagem: Autenticação necessária.
+        '403':
+          description: >-
+            Sessão não autenticada pelo Google, e-mail não verificado ou conta
+            fora da lista de assistentes; também pode indicar falha de CSRF
+
   /api/v1/saude:
     get:
       tags: [Saúde]
@@ -484,15 +677,25 @@ paths:
 
 components:
   securitySchemes:
-    sessaoGoogle:
+    sessaoAplicacao:
       type: apiKey
       in: cookie
       name: JSESSIONID
       description: >-
-        Cookie de sessão do Spring Security após autenticação pelo OAuth2 Login
-        do Google. Aplicável quando RALLY_MODO_DEMONSTRACAO=false; no modo de
+        Cookie de sessão do Spring Security após login local ou OAuth2 Login do
+        Google. Aplicável quando RALLY_MODO_DEMONSTRACAO=false; no modo de
         demonstração a cadeia Spring Security permite as requisições.
   parameters:
+    CabecalhoCsrf:
+      name: X-XSRF-TOKEN
+      in: header
+      required: true
+      description: >-
+        Token obtido do cookie XSRF-TOKEN após consultar GET
+        /api/v1/autenticacao/csrf. Envie este cabeçalho nas requisições de
+        escrita; o cookie também deve acompanhar a sessão do navegador.
+      schema:
+        type: string
     Papel:
       name: X-Papel
       in: header
@@ -557,6 +760,52 @@ components:
           schema:
             $ref: '#/components/schemas/Erro'
   schemas:
+    RequisicaoLogin:
+      type: object
+      required: [email, senha]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+        senha:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: >-
+            Senha da conta local. Além do limite de 128 caracteres, o endpoint
+            rejeita valores com mais de 72 bytes em UTF-8.
+    RequisicaoDefinirSenha:
+      type: object
+      required: [senha]
+      properties:
+        senha:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: >-
+            Nova senha local. Além do intervalo de 12 a 128 caracteres, o
+            endpoint rejeita valores com mais de 72 bytes em UTF-8.
+    RespostaSessao:
+      type: object
+      required: [autenticado, email, nome, provedor, email_verificado]
+      properties:
+        autenticado:
+          type: boolean
+        email:
+          type: string
+          format: email
+          nullable: true
+        nome:
+          type: string
+          nullable: true
+        provedor:
+          type: string
+          enum: [DEMONSTRACAO, GOOGLE, LOCAL]
+          nullable: true
+        email_verificado:
+          type: boolean
     Erro:
       type: object
       description: >-

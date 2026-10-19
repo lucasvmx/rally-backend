@@ -21,6 +21,14 @@ mvn -Dmaven.compiler.release=17 -Djava.version=17 test
 
 Execute o comando dentro de `rally-backend`.
 
+## Login do painel
+
+Em produção, as contas locais são restritas aos e-mails listados em `RALLY_ASSISTENTES`. No primeiro acesso, a assistente deve escolher **Defina uma senha com o Google** na tela de entrada, autenticar-se com o Google e cadastrar uma senha local. Os próximos acessos podem usar e-mail e senha; uma senha correta não libera uma conta bloqueada.
+
+Após três tentativas locais incorretas, a conta fica bloqueada. Para recuperar o acesso, use novamente o fluxo Google verificado para redefinir a senha; essa ação também remove o bloqueio. Não há cadastro público. Formulários de envio público continuam sem exigir login.
+
+No modo de demonstração, o painel entra automaticamente e o fluxo de login local não é usado.
+
 A imagem de produção usa Java 25. O perfil nativo usa GraalVM 25 e deve ser executado em ambiente com suporte ao compilador Native Image.
 
 ## Google Drive

@@ -3,6 +3,7 @@ package br.org.fju.rally.servico;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.core.Authentication;
 import java.util.Arrays;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,17 +23,40 @@ public class AcessoService {
             exigirAssistente(requisicao);
             return;
         }
-        if (requisicao.getUserPrincipal() instanceof OAuth2AuthenticationToken oauth && oauth.isAuthenticated()) {
-            String email = oauth.getPrincipal().getAttribute("email");
-            Boolean verificado = oauth.getPrincipal().getAttribute("email_verified");
-            if (Boolean.TRUE.equals(verificado) && email != null && Arrays.stream(assistentes.split(","))
-                    .map(String::trim).anyMatch(item -> item.equalsIgnoreCase(email))) return;
-        }
+        if (emailAssistenteVerificada(requisicao.getUserPrincipal() instanceof Authentication autenticacao ? autenticacao : null) != null) return;
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Apenas assistentes autorizadas podem administrar formulários.");
+    }
+
+    public String emailAssistenteVerificada(Authentication autenticacao) {
+        if (autenticacao == null || !autenticacao.isAuthenticated()) return null;
+
+        String email;
+        if (autenticacao instanceof OAuth2AuthenticationToken oauth) {
+            email = oauth.getPrincipal().getAttribute("email");
+            Boolean verificado = oauth.getPrincipal().getAttribute("email_verified");
+            if (!Boolean.TRUE.equals(verificado)) return null;
+        } else if (autenticacao.getPrincipal() instanceof UsuarioLocalPrincipal usuario) {
+            email = usuario.email();
+        } else {
+            return null;
+        }
+
+        if (email == null || !assistenteAutorizada(email)) return null;
+        return email;
+    }
+
+    public boolean assistenteAutorizada(String email) {
+        return email != null && Arrays.stream(assistentes.split(","))
+                .map(String::trim).anyMatch(item -> !item.isBlank() && item.equalsIgnoreCase(email.trim()));
     }
 
 
     public ContextoAcesso contexto(HttpServletRequest requisicao) {
+        if (requisicao.getUserPrincipal() instanceof Authentication autenticacao
+                && autenticacao.getPrincipal() instanceof UsuarioLocalPrincipal) {
+            return new ContextoAcesso("ASSISTENTE", null);
+        }
+
         String papel = requisicao.getHeader("X-Papel");
         if (papel == null || papel.isBlank()) {
             papel = "ASSISTENTE";

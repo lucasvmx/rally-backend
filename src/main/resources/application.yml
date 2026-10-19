@@ -37,3 +37,8 @@ rally:
 server:
   forward-headers-strategy: framework
   port: ${PORTA_SERVIDOR:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax

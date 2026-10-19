@@ -15,3 +15,11 @@ spring:
 rally:
   autenticacao:
     modo-demonstracao: false
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax
