@@ -19,6 +19,9 @@ spring:
       max-file-size: 15MB
       max-request-size: 80MB
 
+logging:
+  exception-conversion-word: "%wEx{5}"
+
 rally:
   cors:
     origem-frontend: ${RALLY_FRONTEND_ORIGIN:https://rallydastribos.sytes.net}
