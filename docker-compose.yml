@@ -33,7 +33,7 @@ services:
       RALLY_DATABASE_URL: jdbc:postgresql://banco:5432/${POSTGRES_DB:-rally}
       RALLY_DATABASE_USUARIO: ${POSTGRES_USER:-rally}
       RALLY_DATABASE_SENHA: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env da raiz}
-      RALLY_FRONTEND_ORIGIN: ${RALLY_FRONTEND_ORIGIN:-https://rallydastribos.sytes.net}
+      RALLY_FRONTEND_ORIGIN: ${RALLY_FRONTEND_ORIGIN:-https://rallydastribos.delcore.com.br}
       RALLY_ASSISTENTES: ${RALLY_ASSISTENTES:-}
       RALLY_MODO_DEMONSTRACAO: "false"
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
