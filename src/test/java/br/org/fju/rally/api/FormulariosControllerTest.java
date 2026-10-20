@@ -39,6 +39,9 @@ class FormulariosControllerTest {
 
     @Test
     void geraSegredoCriptograficoDiferenteParaCadaPublicacao() {
+        var entidade = mock(Missao.class);
+        when(entidade.getCamposRelatorio()).thenReturn(List.of());
+        when(missoes.findById(missao)).thenReturn(Optional.of(entidade));
         var definicao = new FormulariosController.Definicao(missao, "Relatório", "", List.of());
         var requisicao = new MockHttpServletRequest();
         var jwt = Jwt.withTokenValue("token").header("alg", "HS256")
@@ -73,17 +76,24 @@ class FormulariosControllerTest {
     }
 
     private void formularioComCampo(String tipo, List<String> opcoes) {
+        formularioComCampo(tipo, opcoes, false);
+    }
+    private void formularioComCampo(String tipo, List<String> opcoes, boolean exigeFoto) {
         var campo = new FormulariosController.Campo("pergunta", "Resposta", tipo, true, opcoes);
         var form = new FormulariosController.Formulario(UUID.randomUUID(), token, true,
             new FormulariosController.Definicao(missao, "Teste", "", List.of(campo)));
         when(banco.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<FormulariosController.Formulario>>any(), eq(token))).thenReturn(List.of(form));
+        var entidade = mock(Missao.class);
+        when(entidade.getCamposRelatorio()).thenReturn(List.of(Map.of(
+            "id", campo.id(), "tipo", campo.tipo(), "escopo", campo.escopo())));
+        when(entidade.isExigeFoto()).thenReturn(exigeFoto);
+        when(missoes.findById(missao)).thenReturn(Optional.of(entidade));
     }
     private FormulariosController.Envio envio(UUID missaoId, Map<String, String> respostas) {
         return new FormulariosController.Envio(new RequisicaoRelatorio(missaoId, tribo, 1, 0, ""), nacao,
             "Integrante", "Nenhum", "Responsável", respostas);
     }
     private void prepararReferenciaDoEnvio() {
-        when(missoes.existsById(missao)).thenReturn(true);
         when(tribos.findById(tribo)).thenReturn(Optional.of(new Tribo(tribo, "Tribo", new Nacao(nacao, "Nação"), true)));
     }
     private MockMultipartFile fotoValida() {
@@ -100,8 +110,6 @@ class FormulariosControllerTest {
     @Test
     void envioPublicoCriaRelatorioESalvaRespostas() throws Exception {
         formularioComCampo("texto", List.of());
-        var entidade = mock(Missao.class);
-        when(missoes.findById(missao)).thenReturn(Optional.of(entidade));
         prepararReferenciaDoEnvio();
         var id = UUID.randomUUID();
         when(relatorios.criarPublico(any())).thenReturn(new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
@@ -112,7 +120,7 @@ class FormulariosControllerTest {
     }
     @Test
     void fotoObrigatoriaEArquivoDisfarcadoSaoRejeitados() {
-        formularioComCampo("texto", List.of());
+        formularioComCampo("texto", List.of(), true);
         prepararReferenciaDoEnvio();
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), null)).hasMessageContaining("somente uma foto");
         var falsa = new MockMultipartFile("arquivo", "foto.png", "image/png", "arquivo invalido".getBytes());
