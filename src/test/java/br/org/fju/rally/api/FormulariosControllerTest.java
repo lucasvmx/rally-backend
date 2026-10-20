@@ -112,7 +112,7 @@ class FormulariosControllerTest {
         formularioComCampo("texto", List.of());
         prepararReferenciaDoEnvio();
         var id = UUID.randomUUID();
-        when(relatorios.criarPublico(any())).thenReturn(new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
+        when(relatorios.criarPublico(any(RequisicaoRelatorio.class), eq(true))).thenReturn(new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
             "Tribo", "Nação", 1, 0, "", java.time.LocalDateTime.now(), false, "ENVIADO", 0, null));
         var resultado = controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), List.of(fotoValida()));
         assertThat(resultado.get("id")).isEqualTo(id);
@@ -122,7 +122,7 @@ class FormulariosControllerTest {
     void fotoObrigatoriaEArquivoDisfarcadoSaoRejeitados() {
         formularioComCampo("texto", List.of(), true);
         prepararReferenciaDoEnvio();
-        assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), null)).hasMessageContaining("somente uma foto");
+        assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), null)).hasMessageContaining("exatamente uma foto");
         var falsa = new MockMultipartFile("arquivo", "foto.png", "image/png", "arquivo invalido".getBytes());
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), List.of(falsa))).hasMessageContaining("não corresponde");
         verifyNoInteractions(relatorios);
