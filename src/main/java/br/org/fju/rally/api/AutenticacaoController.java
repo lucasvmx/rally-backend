@@ -1,5 +1,6 @@
 package br.org.fju.rally.api;
 
+import br.org.fju.rally.config.RedirecionamentoFrontend;
 import br.org.fju.rally.servico.ContaAcessoService;
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.UsuarioLocalPrincipal;
@@ -44,13 +45,15 @@ public class AutenticacaoController {
     private final AcessoService acesso;
     private final UsuarioAcessoService usuarios;
     private final TokenJwtService tokens;
+    private final RedirecionamentoFrontend redirecionamento;
 
     public AutenticacaoController(ContaAcessoService contas, AcessoService acesso,
-            UsuarioAcessoService usuarios, TokenJwtService tokens) {
+            UsuarioAcessoService usuarios, TokenJwtService tokens, RedirecionamentoFrontend redirecionamento) {
         this.contas = contas;
         this.acesso = acesso;
         this.usuarios = usuarios;
         this.tokens = tokens;
+        this.redirecionamento = redirecionamento;
     }
 
     @GetMapping("/csrf")
@@ -131,7 +134,7 @@ public class AutenticacaoController {
     @GetMapping("/senha/google")
     public void iniciarDefinicaoDeSenha(HttpServletRequest requisicao, HttpServletResponse resposta) throws IOException {
         requisicao.getSession(true).setAttribute(DESTINO_DEFINIR_SENHA, true);
-        resposta.sendRedirect("/oauth2/authorization/google");
+        redirecionamento.redirecionar(resposta, "/oauth2/authorization/google");
     }
 
     public static boolean consumirDestinoDefinirSenha(HttpServletRequest requisicao) {

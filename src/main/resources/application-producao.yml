@@ -14,6 +14,8 @@ spring:
               - https://www.googleapis.com/auth/drive.file
 
 rally:
+  frontend:
+    origem: ${RALLY_FRONTEND_ORIGIN:https://rallydastribos.delcore.com.br}
   autenticacao:
     jwt-segredo: ${RALLY_JWT_SECRET}
 
