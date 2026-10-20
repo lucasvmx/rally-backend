@@ -107,7 +107,7 @@ public class RegrasPontuacaoService {
         String tipo = texto(regra.get("tipo"));
         long pontos = inteiro(regra.get("pontos"), 0);
         if ("A_CADA".equals(tipo)) {
-            int bloco = inteiro(regra.get("quantidade"), 0);
+            long bloco = inteiro(regra.get("quantidade"), 0);
             return bloco <= 0 ? 0 : quantidade.divideToIntegralValue(BigDecimal.valueOf(bloco)).longValue() * pontos;
         }
         if ("META".equals(tipo)) {

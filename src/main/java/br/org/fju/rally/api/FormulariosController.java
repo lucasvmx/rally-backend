@@ -2,6 +2,7 @@ package br.org.fju.rally.api;
 
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.RelatorioService;
+import br.org.fju.rally.dominio.Tribo;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
