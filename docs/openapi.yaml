@@ -356,7 +356,10 @@ paths:
       description: >-
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Recebe de 1 a 100
         missões e cria todas na mesma operação, vinculadas a um rally. O campo
-        rally pode definir nome, data_inicio e data_fim; se omitido, o servidor
+        rally_id pode selecionar um rally existente. rally_id e rally são
+        mutuamente exclusivos; enviar ambos resulta em 400, e um rally_id sem
+        rally correspondente resulta em 404. O objeto rally pode definir nome,
+        data_inicio e data_fim; se rally e rally_id forem omitidos, o servidor
         cria um rally com o menor início e o maior fim das missões e nome gerado.
         As datas das missões devem estar dentro do período do rally e a data de
         início de cada missão não pode ser posterior à data de fim. As regras de
@@ -367,9 +370,11 @@ paths:
         opcional; quando informado, deve ser um link HTTPS do Google Forms
         aceito pelo serviço (forms.gle/<caminho> ou
         docs.google.com/forms/<caminho>), sem porta explícita nem usuário na
-        URL. O escopo da role vem da sessão autenticada
-        ou do JWT em Authorization: Bearer, nunca de cabeçalhos definidos pelo
-        cliente.
+        URL. A autenticação aceita uma sessão Spring Security local ou OAuth2
+        Login Google, ou um JWT emitido pelo backend em Authorization: Bearer.
+        O papel vem da identidade autenticada, nunca de cabeçalhos definidos pelo
+        cliente. A proteção CSRF também se aplica; obtenha o token em
+        /api/v1/autenticacao/csrf e envie X-XSRF-TOKEN.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -393,6 +398,14 @@ paths:
           $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O período de um novo rally coincide com outro rally cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/rallies:
     get:
@@ -400,9 +413,8 @@ paths:
       summary: Lista rallies cadastrados
       description: >-
         Inclui o indicador ativo calculado pela data atual em
-        America/Sao_Paulo. O intervalo de início e fim é inclusivo. O código
-        não impede períodos sobrepostos; se mais de um rally contiver a data,
-        o placar escolhe aquele com a data_inicio mais recente.
+        America/Sao_Paulo. O intervalo de início e fim é inclusivo. O cadastro
+        rejeita períodos sobrepostos com 409.
       responses:
         '200':
           description: Rallies em ordem decrescente de data de início
@@ -416,6 +428,97 @@ paths:
           $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
+
+    post:
+      tags: [Dados do Rally]
+      summary: Cadastra um rally
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. A autenticação aceita
+        uma sessão Spring Security local ou OAuth2 Login Google, ou um JWT
+        emitido pelo backend em Authorization: Bearer. O papel vem da identidade
+        autenticada, nunca de cabeçalhos definidos pelo cliente. A proteção
+        CSRF também se aplica; obtenha o token em /api/v1/autenticacao/csrf e
+        envie X-XSRF-TOKEN. O período informado não pode se sobrepor ao de outro
+        rally cadastrado. A data_inicio deve ser anterior ou igual à data_fim.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DadosRally'
+      responses:
+        '201':
+          description: Rally criado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRally'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '409':
+          description: O período informado coincide com outro rally cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/rallies/{id}:
+    delete:
+      tags: [Dados do Rally]
+      summary: Exclui um rally
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. A autenticação aceita
+        uma sessão Spring Security local ou OAuth2 Login Google, ou um JWT
+        emitido pelo backend em Authorization: Bearer. O papel vem da identidade
+        autenticada, nunca de cabeçalhos definidos pelo cliente. A proteção
+        CSRF também se aplica; obtenha o token em /api/v1/autenticacao/csrf e
+        envie X-XSRF-TOKEN. A exclusão remove em cascata as missões do rally,
+        formulários públicos específicos, relatórios, respostas, fotos,
+        pontuações e demais registros vinculados no banco de dados.
+      parameters:
+        - $ref: '#/components/parameters/RallyId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Rally excluído; não há corpo de resposta
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/missoes/{id}:
+    delete:
+      tags: [Dados do Rally]
+      summary: Exclui uma missão
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. A autenticação aceita
+        uma sessão Spring Security local ou OAuth2 Login Google, ou um JWT
+        emitido pelo backend em Authorization: Bearer. O papel vem da identidade
+        autenticada, nunca de cabeçalhos definidos pelo cliente. A proteção
+        CSRF também se aplica; obtenha o token em /api/v1/autenticacao/csrf e
+        envie X-XSRF-TOKEN. A exclusão remove em cascata formulários públicos
+        específicos, relatórios, respostas, fotos, pessoas pontuadas, metas e
+        demais registros vinculados no banco de dados.
+      parameters:
+        - $ref: '#/components/parameters/MissaoId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Missão excluída; não há corpo de resposta
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
 
   /api/v1/missoes/interpretar:
     post:
@@ -1170,6 +1273,22 @@ components:
       schema:
         type: string
         format: uuid
+    MissaoId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID da missão.
+      schema:
+        type: string
+        format: uuid
+    RallyId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID do rally.
+      schema:
+        type: string
+        format: uuid
     FormularioId:
       name: id
       in: path
@@ -1506,7 +1625,6 @@ components:
         rally_id:
           type: string
           format: uuid
-          nullable: true
         rally_nome:
           type: string
           nullable: true
@@ -1548,9 +1666,11 @@ components:
           type: string
           minLength: 1
           maxLength: 180
+          description: Não pode estar vazio nem ser composto apenas por espaços.
         data_inicio:
           type: string
           format: date
+          description: Deve ser anterior ou igual a data_fim.
         data_fim:
           type: string
           format: date
@@ -2152,8 +2272,17 @@ components:
             - $ref: '#/components/schemas/DadosRally'
           nullable: true
           description: >-
-            Se omitido ou nulo, os limites do rally são inferidos a partir das
-            datas das missões; o nome também é gerado.
+            Não pode ser enviado junto com rally_id. Se rally e rally_id forem
+            omitidos ou nulos, os limites do rally são inferidos a partir das
+            datas das missões e o nome também é gerado.
+        rally_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Identificador de rally já cadastrado ao qual as missões serão
+            vinculadas. Não pode ser enviado junto com rally; um identificador
+            sem rally correspondente resulta em 404.
         missoes:
           type: array
           minItems: 1

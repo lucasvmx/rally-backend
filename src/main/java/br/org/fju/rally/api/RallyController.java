@@ -12,8 +12,10 @@ import br.org.fju.rally.servico.RelatorioService;
 import br.org.fju.rally.servico.TriboService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -96,6 +99,18 @@ public class RallyController {
                 .toList();
     }
 
+    @PostMapping("/rallies")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RespostaRally criarRally(@Valid @RequestBody DadosRally corpo, HttpServletRequest requisicao) {
+        return missaoService.criarRally(corpo, requisicao);
+    }
+
+    @DeleteMapping("/rallies/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void excluirRally(@PathVariable UUID id, HttpServletRequest requisicao) {
+        missaoService.excluirRally(id, requisicao);
+    }
+
     @PostMapping("/missoes/interpretar")
     public RespostaInterpretacaoMissoes interpretarMissoes(@Valid @RequestBody RequisicaoInterpretacao corpo,
                                                             HttpServletRequest requisicao) {
@@ -106,6 +121,12 @@ public class RallyController {
     public List<RespostaMissao> criarMissoes(@Valid @RequestBody RequisicaoCriarMissoes corpo,
                                               HttpServletRequest requisicao) {
         return missaoService.criar(corpo, requisicao);
+    }
+
+    @DeleteMapping("/missoes/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void excluirMissao(@PathVariable UUID id, HttpServletRequest requisicao) {
+        missaoService.excluirMissao(id, requisicao);
     }
 
     @GetMapping("/relatorios")

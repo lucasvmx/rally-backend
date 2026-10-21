@@ -7,6 +7,7 @@ import br.org.fju.rally.api.RequisicaoInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
 import br.org.fju.rally.api.RespostaMissao;
+import br.org.fju.rally.api.RespostaRally;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.Rally;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
@@ -53,13 +54,49 @@ public class MissaoService {
     @Transactional
     public List<RespostaMissao> criar(RequisicaoCriarMissoes corpo, HttpServletRequest requisicao) {
         acesso.exigirAssistente(requisicao);
-        DadosRally dadosRally = obterDadosRally(corpo);
-        validarCamposRally(dadosRally, corpo.missoes());
-        Rally rally = rallies.saveAndFlush(new Rally(UUID.randomUUID(), dadosRally.nome().trim(),
-                dadosRally.dataInicio(), dadosRally.dataFim()));
+        if (corpo.rallyId() != null && corpo.rally() != null) {
+            throw erro("Informe rally_id ou rally, não os dois.");
+        }
+        Rally rally;
+        if (corpo.rallyId() != null) {
+            rally = rallies.findById(corpo.rallyId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado."));
+            validarDatasMissoesNoRally(rally, corpo.missoes());
+        } else {
+            DadosRally dadosRally = obterDadosRally(corpo);
+            validarCamposRally(dadosRally, corpo.missoes());
+            rally = rallies.saveAndFlush(new Rally(UUID.randomUUID(), dadosRally.nome().trim(),
+                    dadosRally.dataInicio(), dadosRally.dataFim()));
+        }
         List<Missao> novas = corpo.missoes().stream().map(dados -> converter(dados, rally)).toList();
         List<Missao> salvas = missoes.saveAllAndFlush(novas);
         return salvas.stream().map(RespostaMissao::de).toList();
+    }
+
+    @Transactional
+    public RespostaRally criarRally(DadosRally dados, HttpServletRequest requisicao) {
+        acesso.exigirAssistente(requisicao);
+        validarDadosRally(dados);
+        Rally rally = rallies.saveAndFlush(new Rally(UUID.randomUUID(), dados.nome().trim(),
+                dados.dataInicio(), dados.dataFim()));
+        LocalDate hoje = LocalDate.now(java.time.ZoneId.of("America/Sao_Paulo"));
+        return RespostaRally.de(rally, hoje);
+    }
+
+    @Transactional
+    public void excluirMissao(UUID id, HttpServletRequest requisicao) {
+        acesso.exigirAssistente(requisicao);
+        Missao missao = missoes.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Missão não encontrada."));
+        missoes.delete(missao);
+    }
+
+    @Transactional
+    public void excluirRally(UUID id, HttpServletRequest requisicao) {
+        acesso.exigirAssistente(requisicao);
+        Rally rally = rallies.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado."));
+        rallies.delete(rally);
     }
 
     private Missao converter(DadosMissao dados, Rally rally) {
@@ -96,7 +133,13 @@ public class MissaoService {
     }
 
     private void validarCamposRally(DadosRally rally, List<DadosMissao> missoes) {
-        if (rally.nome() == null || rally.nome().isBlank() || rally.dataInicio() == null || rally.dataFim() == null
+        validarDadosRally(rally);
+        validarDatasMissoesNoPeriodo(rally.dataInicio(), rally.dataFim(), missoes);
+    }
+
+    private void validarDadosRally(DadosRally rally) {
+        if (rally.nome() == null || rally.nome().isBlank() || rally.nome().length() > 180
+                || rally.dataInicio() == null || rally.dataFim() == null
                 || rally.dataInicio().isAfter(rally.dataFim())) {
             throw erro("Informe o nome e um período válido para o rally.");
         }
@@ -105,9 +148,17 @@ public class MissaoService {
                         && !rally.dataInicio().isAfter(existente.getDataFim()));
         if (sobreposto) throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "O período informado coincide com outro rally cadastrado.");
+    }
+
+    private void validarDatasMissoesNoRally(Rally rally, List<DadosMissao> missoes) {
+        validarDatasMissoesNoPeriodo(rally.getDataInicio(), rally.getDataFim(), missoes);
+    }
+
+    private void validarDatasMissoesNoPeriodo(LocalDate inicioRally, LocalDate fimRally,
+                                               List<DadosMissao> missoes) {
         for (DadosMissao missao : missoes) {
             if (missao.dataInicio() == null || missao.dataFim() == null
-                    || missao.dataInicio().isBefore(rally.dataInicio()) || missao.dataFim().isAfter(rally.dataFim())) {
+                    || missao.dataInicio().isBefore(inicioRally) || missao.dataFim().isAfter(fimRally)) {
                 throw erro("As datas de cada missão precisam estar dentro do período do rally.");
             }
         }

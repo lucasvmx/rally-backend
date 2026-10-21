@@ -63,6 +63,7 @@ public class FormulariosController {
             rs.getObject("id", UUID.class), rs.getString("token"), rs.getBoolean("ativo"),
             json.readValue(rs.getString("definicao"), Definicao.class)));
     }
+    @Transactional
     @PostMapping("/formularios")
     public Formulario criar(@Valid @RequestBody Definicao definicao, HttpServletRequest req) {
         acesso.exigirAdministracaoFormularios(req);
@@ -90,8 +91,8 @@ public class FormulariosController {
         }
         byte[] segredo = new byte[32]; new SecureRandom().nextBytes(segredo);
         Formulario form = new Formulario(UUID.randomUUID(), HexFormat.of().formatHex(segredo), true, definicao);
-        banco.update("INSERT INTO formularios_publicos(id, token, definicao) VALUES (?, ?, ?)",
-            form.id(), form.token(), json.writeValueAsString(form.definicao()));
+        banco.update("INSERT INTO formularios_publicos(id, token, definicao, missao_id) VALUES (?, ?, ?, ?)",
+            form.id(), form.token(), json.writeValueAsString(form.definicao()), definicao.missaoId());
         return form;
     }
     @PostMapping("/formularios/{id}/desativar")
