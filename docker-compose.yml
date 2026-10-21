@@ -21,6 +21,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        RALLY_FACE_DETECTION_PACKAGE_OWNER: ${RALLY_FACE_DETECTION_PACKAGE_OWNER:-}
+      secrets:
+        - source: maven_settings
+          target: maven_settings
+        - github_token
+        - github_actor
     image: ${RALLY_BACKEND_IMAGE:-rally-backend:local}
     restart: unless-stopped
     depends_on:
@@ -42,8 +49,22 @@ services:
       OPENROUTER_MODELO_FOTOS: ${OPENROUTER_MODELO_FOTOS:-deepseek/deepseek-v4.1-flash-1017}
       OPENROUTER_MODELOS_RESERVA: ${OPENROUTER_MODELOS_RESERVA:-qwen/qwen3-next-80b-a3b-thinking}
       GOOGLE_DRIVE_PASTA_CENTRAL: ${GOOGLE_DRIVE_PASTA_CENTRAL:-}
+      RALLY_FACE_DETECTION_HOST: host.docker.internal
+      RALLY_FACE_DETECTION_PORT: ${RALLY_FACE_DETECTION_PORT:-50051}
+      RALLY_FACE_DETECTION_TOKEN: ${RALLY_FACE_DETECTION_TOKEN:?Defina RALLY_FACE_DETECTION_TOKEN no arquivo .env da raiz}
+      RALLY_FACE_DETECTION_TIMEOUT_MS: ${RALLY_FACE_DETECTION_TIMEOUT_MS:-30000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${RALLY_BACKEND_PORT:-8080}:8080"
 
 volumes:
   dados-postgres:
+
+secrets:
+  maven_settings:
+    file: ${RALLY_MAVEN_SETTINGS_FILE:-${HOME}/.m2/settings.xml}
+  github_token:
+    environment: GITHUB_TOKEN
+  github_actor:
+    environment: GITHUB_ACTOR

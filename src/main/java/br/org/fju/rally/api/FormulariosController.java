@@ -1,7 +1,8 @@
 package br.org.fju.rally.api;
 
 import br.org.fju.rally.servico.AcessoService;
-import br.org.fju.rally.servico.RelatorioService;
+import br.org.fju.rally.servico.EnvioFormularioService;
+import br.org.fju.rally.servico.FaceDetectionClient;
 import br.org.fju.rally.dominio.Tribo;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -26,14 +28,19 @@ public class FormulariosController {
     private final JdbcTemplate banco;
     private final JsonMapper json;
     private final AcessoService acesso;
-    private final RelatorioService relatorios;
+    private final EnvioFormularioService enviosFormulario;
+    private final FaceDetectionClient detectorFaces;
     private final MissaoRepositorio missoes;
     private final NacaoRepositorio nacoes;
     private final TriboRepositorio tribos;
+    @Autowired
     public FormulariosController(JdbcTemplate banco, JsonMapper json, AcessoService acesso,
-            RelatorioService relatorios, MissaoRepositorio missoes, NacaoRepositorio nacoes, TriboRepositorio tribos) {
+            EnvioFormularioService enviosFormulario, MissaoRepositorio missoes, NacaoRepositorio nacoes,
+            TriboRepositorio tribos, FaceDetectionClient detectorFaces) {
         this.banco = banco; this.json = json; this.acesso = acesso;
-        this.relatorios = relatorios; this.missoes = missoes; this.nacoes = nacoes; this.tribos = tribos;
+        this.enviosFormulario = enviosFormulario; this.missoes = missoes;
+        this.nacoes = nacoes; this.tribos = tribos;
+        this.detectorFaces = detectorFaces;
     }
     public record Campo(@NotBlank @Size(max=80) String id, @NotBlank @Size(max=200) String titulo,
                         @NotNull @Pattern(regexp="texto|paragrafo|numero|selecao") String tipo,
@@ -151,7 +158,6 @@ public class FormulariosController {
             "exige_foto", exigeFoto);
     }
     @PostMapping(value="/publico/formularios/{token}/respostas", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Transactional
     public Map<String, Object> enviar(@PathVariable String token, @Valid @RequestPart("dados") Envio envio,
                                    @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos) throws IOException {
         return processarEnvio(token, envio, arquivos);
@@ -219,34 +225,54 @@ public class FormulariosController {
             conteudo = arquivo.getBytes();
             if (!assinaturaValida(conteudo, arquivo.getContentType())) throw erro("O arquivo não corresponde ao formato de foto informado.");
         }
+        FaceDetectionClient.Resultado analise = null;
+        if (arquivo != null) {
+            analise = detectorFaces.detectar(conteudo, arquivo.getContentType());
+        }
         Map<String, Object> dadosRelatorio = new LinkedHashMap<>(envio.respostas());
         RequisicaoRelatorio dadosDoRelatorio = new RequisicaoRelatorio(envio.relatorio().missaoId(),
                 envio.relatorio().triboId(), envio.relatorio().quantidadePessoas(),
                 envio.relatorio().quantidadeNovosAfastados(), envio.relatorio().observacoes(), pessoas,
                 dadosRelatorio);
-        RespostaRelatorio relatorio = relatorios.criarPublico(dadosDoRelatorio, arquivo != null);
         Map<String, Object> respostas = new LinkedHashMap<>(envio.respostas());
         respostas.put("nomes_integrantes", nomesPorCategoria(pessoas, false));
         respostas.put("nomes_novos_afastados", nomesPorCategoria(pessoas, true));
         respostas.put("pessoas", pessoas);
         respostas.put("preenchido_por", envio.preenchidoPor());
-        banco.update("INSERT INTO respostas_formularios(relatorio_id, formulario_id, respostas, nome_arquivo, tipo_arquivo, arquivo) VALUES (?, ?, ?, ?, ?, ?)",
-            relatorio.id(), form.id(), json.writeValueAsString(respostas), arquivo == null ? null : "foto",
-                arquivo == null ? null : arquivo.getContentType(), conteudo);
+        RespostaRelatorio relatorio = enviosFormulario.salvar(form.id(), dadosDoRelatorio, respostas, analise);
         return Map.of("id", relatorio.id(), "avisos", relatorio.avisos());
     }
     @GetMapping("/formularios/respostas/{id}")
-    public List<Map<String, Object>> respostas(@PathVariable UUID id, HttpServletRequest req) {
+    public List<RespostaFormulario> respostas(@PathVariable UUID id, HttpServletRequest req) {
         acesso.exigirAdministracaoFormularios(req);
-        return banco.query("SELECT r.respostas, r.nome_arquivo, f.definicao FROM respostas_formularios r JOIN formularios_publicos f ON f.id = r.formulario_id WHERE r.relatorio_id = ?",
-            (rs, n) -> Map.of("respostas", json.readTree(rs.getString("respostas")), "definicao", json.readTree(rs.getString("definicao")), "tem_foto", rs.getString("nome_arquivo") != null), id);
+        return banco.query("""
+                SELECT r.respostas, r.nome_arquivo, r.arquivo, r.arquivo_anotado,
+                       r.contagem_rostos, f.definicao
+                FROM respostas_formularios r
+                JOIN formularios_publicos f ON f.id = r.formulario_id
+                WHERE r.relatorio_id = ?
+                """,
+            (rs, n) -> new RespostaFormulario(json.readTree(rs.getString("respostas")),
+                    json.readTree(rs.getString("definicao")), rs.getBytes("arquivo") != null,
+                    rs.getBytes("arquivo_anotado") != null, rs.getObject("contagem_rostos", Long.class)), id);
     }
     @GetMapping("/formularios/respostas/{id}/foto")
     public ResponseEntity<byte[]> foto(@PathVariable UUID id, HttpServletRequest req) {
         acesso.exigirAdministracaoFormularios(req);
         return banco.query("SELECT arquivo, tipo_arquivo FROM respostas_formularios WHERE relatorio_id = ? AND arquivo IS NOT NULL",
             (rs, n) -> ResponseEntity.ok().header("X-Content-Type-Options", "nosniff")
+                .header("Cache-Control", "no-store")
                 .contentType(MediaType.parseMediaType(rs.getString("tipo_arquivo"))).body(rs.getBytes("arquivo")), id)
+            .stream().findFirst().orElseThrow(FormulariosController::inexistente);
+    }
+    @GetMapping("/formularios/respostas/{id}/foto-anotada")
+    public ResponseEntity<byte[]> fotoAnotada(@PathVariable UUID id, HttpServletRequest req) {
+        acesso.exigirAdministracaoFormularios(req);
+        return banco.query("SELECT arquivo_anotado, tipo_arquivo FROM respostas_formularios WHERE relatorio_id = ? AND arquivo_anotado IS NOT NULL",
+            (rs, n) -> ResponseEntity.ok().header("X-Content-Type-Options", "nosniff")
+                .header("Cache-Control", "no-store")
+                .contentType(MediaType.parseMediaType(rs.getString("tipo_arquivo")))
+                .body(rs.getBytes("arquivo_anotado")), id)
             .stream().findFirst().orElseThrow(FormulariosController::inexistente);
     }
     private static boolean assinaturaValida(byte[] bytes, String tipo) {

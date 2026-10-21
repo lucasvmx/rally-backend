@@ -4,7 +4,8 @@ import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
 import br.org.fju.rally.servico.AcessoService;
-import br.org.fju.rally.servico.RelatorioService;
+import br.org.fju.rally.servico.EnvioFormularioService;
+import br.org.fju.rally.servico.FaceDetectionClient;
 import org.junit.jupiter.api.Test;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.Nacao;
@@ -29,9 +30,10 @@ class FormulariosControllerTest {
     private final MissaoRepositorio missoes = mock(MissaoRepositorio.class);
     private final NacaoRepositorio nacoes = mock(NacaoRepositorio.class);
     private final TriboRepositorio tribos = mock(TriboRepositorio.class);
-    private final RelatorioService relatorios = mock(RelatorioService.class);
+    private final EnvioFormularioService enviosFormulario = mock(EnvioFormularioService.class);
+    private final FaceDetectionClient detectorFaces = mock(FaceDetectionClient.class);
     private final FormulariosController controller = new FormulariosController(banco, JsonMapper.builder().build(),
-        new AcessoService(), relatorios, missoes, nacoes, tribos);
+        new AcessoService(), enviosFormulario, missoes, nacoes, tribos, detectorFaces);
     private final UUID missao = UUID.randomUUID();
     private final UUID tribo = UUID.randomUUID();
     private final UUID nacao = UUID.randomUUID();
@@ -72,7 +74,7 @@ class FormulariosControllerTest {
         assertThatThrownBy(() -> controller.publico("adivinhar")).isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
         when(banco.query(anyString(), org.mockito.ArgumentMatchers.<RowMapper<FormulariosController.Formulario>>any(), eq(token))).thenReturn(List.of());
         assertThatThrownBy(() -> controller.publico(token)).isInstanceOf(ResponseStatusException.class).hasMessageContaining("404");
-        verifyNoInteractions(relatorios);
+        verifyNoInteractions(enviosFormulario);
     }
 
     private void formularioComCampo(String tipo, List<String> opcoes) {
@@ -105,18 +107,39 @@ class FormulariosControllerTest {
         formularioComCampo("texto", List.of());
         assertThatThrownBy(() -> controller.enviar(token, envio(UUID.randomUUID(), Map.of()), null))
             .isInstanceOf(ResponseStatusException.class).hasMessageContaining("Missão inválida");
-        verifyNoInteractions(relatorios);
+        verifyNoInteractions(enviosFormulario);
     }
     @Test
     void envioPublicoCriaRelatorioESalvaRespostas() throws Exception {
         formularioComCampo("texto", List.of());
         prepararReferenciaDoEnvio();
         var id = UUID.randomUUID();
-        when(relatorios.criarPublico(any(RequisicaoRelatorio.class), eq(true))).thenReturn(new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
-            "Tribo", "Nação", 1, 0, "", java.time.LocalDateTime.now(), false, "ENVIADO", 0, null));
+        byte[] original = fotoValida().getBytes();
+        byte[] anotada = original.clone();
+        anotada[anotada.length - 1] ^= 1;
+        when(detectorFaces.detectar(any(byte[].class), eq("image/png")))
+            .thenReturn(new FaceDetectionClient.Resultado(original, anotada, "image/png", 2));
+        var resposta = new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
+            "Tribo", "Nação", 1, 0, "", java.time.LocalDateTime.now(), false, "ENVIADO", 0, null);
+        when(enviosFormulario.salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(), any()))
+            .thenReturn(resposta);
         var resultado = controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), List.of(fotoValida()));
         assertThat(resultado.get("id")).isEqualTo(id);
-        verify(banco).update(startsWith("INSERT INTO respostas_formularios"), eq(id), any(UUID.class), contains("Centro"), eq("foto"), eq("image/png"), any(byte[].class));
+        verify(detectorFaces).detectar(eq(original), eq("image/png"));
+        verify(enviosFormulario).salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(), any());
+    }
+    @Test
+    void falhaNaDeteccaoNaoPersisteRelatorio() throws Exception {
+        formularioComCampo("texto", List.of());
+        prepararReferenciaDoEnvio();
+        when(detectorFaces.detectar(any(byte[].class), eq("image/png")))
+            .thenThrow(new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "indisponível"));
+
+        assertThatThrownBy(() -> controller.enviar(token,
+                envio(missao, Map.of("pergunta", "Centro")), List.of(fotoValida())))
+            .isInstanceOf(ResponseStatusException.class);
+        verifyNoInteractions(enviosFormulario);
     }
     @Test
     void fotoObrigatoriaEArquivoDisfarcadoSaoRejeitados() {
@@ -125,7 +148,7 @@ class FormulariosControllerTest {
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), null)).hasMessageContaining("exatamente uma foto");
         var falsa = new MockMultipartFile("arquivo", "foto.png", "image/png", "arquivo invalido".getBytes());
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), List.of(falsa))).hasMessageContaining("não corresponde");
-        verifyNoInteractions(relatorios);
+        verifyNoInteractions(enviosFormulario);
     }
     @Test
     void validaObrigatoriedadeTiposEOpcoesNoServidor() {
@@ -136,6 +159,6 @@ class FormulariosControllerTest {
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "NaN")), null)).hasMessageContaining("Número inválido");
         formularioComCampo("selecao", List.of("Sim", "Não"));
         assertThatThrownBy(() -> controller.enviar(token, envio(missao, Map.of("pergunta", "Outra")), null)).hasMessageContaining("Opção inválida");
-        verifyNoInteractions(relatorios);
+        verifyNoInteractions(enviosFormulario);
     }
 }
