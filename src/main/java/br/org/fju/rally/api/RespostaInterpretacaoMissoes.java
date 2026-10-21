@@ -6,13 +6,13 @@ public record RespostaInterpretacaoMissoes(
         String origem,
         String mensagem,
         String textoOriginal,
-        List<DadosMissao> missoes,
+        List<MissaoSugerida> missoes,
         List<String> linksGoogleForms,
         List<String> ambiguidades,
         DadosRally rally
 ) {
     public RespostaInterpretacaoMissoes(String origem, String mensagem, String textoOriginal,
-                                        List<DadosMissao> missoes, List<String> linksGoogleForms,
+                                        List<MissaoSugerida> missoes, List<String> linksGoogleForms,
                                         List<String> ambiguidades) {
         this(origem, mensagem, textoOriginal, missoes, linksGoogleForms, ambiguidades, null);
     }

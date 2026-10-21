@@ -1,7 +1,7 @@
 package br.org.fju.rally.servico;
 
-import br.org.fju.rally.api.DadosMissao;
 import br.org.fju.rally.api.DadosRally;
+import br.org.fju.rally.api.MissaoSugerida;
 import br.org.fju.rally.api.RespostaInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
 import org.springframework.beans.factory.annotation.Value;
@@ -144,7 +144,7 @@ public class InterpretadorDeRegras {
         if (ambiguidadesJson.isArray()) ambiguidadesJson.forEach(item -> {
             if (!item.asText().isBlank()) ambiguidades.add(item.asText());
         });
-        List<DadosMissao> missoes = new ArrayList<>();
+        List<MissaoSugerida> missoes = new ArrayList<>();
         for (int indice = 0; indice < regras.size(); indice++) {
             JsonNode regra = regras.get(indice);
             if (!regra.isObject()) throw new IllegalArgumentException("Uma missão da IA não é um objeto JSON.");
@@ -169,7 +169,7 @@ public class InterpretadorDeRegras {
                 missoes, linksEncontrados, ambiguidades, rally);
     }
 
-    private DadosMissao missaoInterpretada(JsonNode regra, String link, List<String> ambiguidades) {
+    private MissaoSugerida missaoInterpretada(JsonNode regra, String link, List<String> ambiguidades) {
         String nome = texto(regra, "nome", "nome_missao", "titulo");
         String descricao = texto(regra, "descricao", "regras_resumo", "resumo");
         LocalDate inicio = data(regra, "data_inicio", "inicio");
@@ -184,40 +184,17 @@ public class InterpretadorDeRegras {
         }
         List<Map<String, Object>> regrasPontuacao = objetos(regra.path("regras_pontuacao"));
         if (regrasPontuacao.isEmpty()) {
-            if (!temCampo(regra, "pontos_por_pessoa", "pontos_por_integrante")
-                    || !temCampo(regra, "pontos_por_novo_afastado", "pontos_por_novo")) {
-                ambiguidades.add("Revise os pontos por pessoa e por pessoa nova ou afastada da missão "
-                        + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
-            }
-            if (!temCampo(regra, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos")
-                    || !temCampo(regra, "meta_nacional", "quantidade_meta_nacional")
-                    || !temCampo(regra, "bonificacao_meta_nacional", "bonus_nacional")) {
-                ambiguidades.add("Revise os bônus e a meta nacional da missão "
-                        + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
-            }
+            ambiguidades.add("Revise se todas as regras de pontuação da missão "
+                    + (nome == null ? "sem nome" : "“" + nome + "”") + " foram estruturadas.");
         }
         if (!temCampo(regra, "exige_foto", "foto_obrigatoria")) {
             ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
                     + " exige foto.");
         }
-        int pontosPessoa = inteiro(regra, 0, "pontos_por_pessoa", "pontos_por_integrante");
-        int pontosNovo = inteiro(regra, 0, "pontos_por_novo_afastado", "pontos_por_novo");
-        int bonusCinco = inteiro(regra, 0, "bonificacao_a_cada_cinco_novos", "bonus_a_cada_cinco_novos");
-        int metaNacional = inteiro(regra, 0, "meta_nacional", "quantidade_meta_nacional");
-        int bonusNacional = inteiro(regra, 0, "bonificacao_meta_nacional", "bonus_nacional");
         boolean exigeFoto = booleano(regra, "exige_foto", "foto_obrigatoria");
-        String tipoPessoa = texto(regra, "tipo_pessoa", "tipo_de_pessoa");
-        if (tipoPessoa == null && regrasPontuacao.isEmpty()) ambiguidades.add("Confirme o tipo de pessoa contado na missão "
-                + (nome == null ? "sem nome" : "“" + nome + "”") + ".");
-        tipoPessoa = tipoPessoa != null && (tipoPessoa.toLowerCase().contains("novo")
-                || tipoPessoa.toLowerCase().contains("afastado")) ? "novo_ou_afastado" : "integrante";
         List<Map<String, Object>> camposRelatorio = objetos(regra.path("campos_relatorio"));
-        if (regrasPontuacao.isEmpty()) {
-            ambiguidades.add("Revise se todos os bônus e condições da missão “"
-                    + (nome == null ? "sem nome" : nome) + "” foram convertidos em regras calculáveis.");
-        }
-        return new DadosMissao(nome, descricao, inicio, fim, prazo, pontosPessoa, pontosNovo, bonusCinco,
-                metaNacional, bonusNacional, exigeFoto, tipoPessoa, link, regrasPontuacao, camposRelatorio);
+        return new MissaoSugerida(nome, descricao, inicio, fim, prazo, exigeFoto, link,
+                regrasPontuacao, camposRelatorio);
     }
 
     private DadosRally rallyInterpretado(JsonNode json, List<String> ambiguidades) {
@@ -344,22 +321,6 @@ public class InterpretadorDeRegras {
         }
     }
 
-    private static int inteiro(JsonNode objeto, int padrao, String... nomes) {
-        for (String nome : nomes) {
-            JsonNode valor = objeto.get(nome);
-            if (valor == null || valor.isNull()) continue;
-            if (valor.isNumber()) return Math.max(0, Math.min(1000000, valor.asInt()));
-            String numero = valor.asText().replaceAll("[^0-9]", "");
-            if (numero.isBlank()) return padrao;
-            try {
-                return Math.min(1000000, Integer.parseInt(numero));
-            } catch (NumberFormatException ignorada) {
-                return 1000000;
-            }
-        }
-        return padrao;
-    }
-
     private static boolean booleano(JsonNode objeto, String... nomes) {
         for (String nome : nomes) {
             JsonNode valor = objeto.get(nome);
@@ -454,9 +415,12 @@ public class InterpretadorDeRegras {
                 + "com a chave raiz 'rally' contendo nome, data_inicio e data_fim do Rally, 'missoes' contendo uma missão por atividade descrita, e uma chave 'ambiguidades' com "
                 + "dúvidas que exijam revisão humana. Para cada missão use exatamente os campos: nome, descricao, "
                 + "data_inicio (DD/MM/AAAA), data_fim (DD/MM/AAAA), prazo_envio (DD/MM/AAAA HH:mm:ss ou null), "
-                + "pontos_por_pessoa, pontos_por_novo_afastado, bonificacao_a_cada_cinco_novos, meta_nacional, "
-                + "bonificacao_meta_nacional, exige_foto, tipo_pessoa ('integrante' ou 'novo_ou_afastado') e "
-                + "link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e campos_relatorio. "
+                + "exige_foto, link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e "
+                + "campos_relatorio. Toda pontuação, inclusive pontos por pessoa, por quantidade e quaisquer "
+                + "bonificações, deve aparecer somente em regras_pontuacao; não retorne campos fixos de pontuação "
+                + "na missão. Use POR_PESSOA com categoria INTEGRANTE ou NOVO_AFASTADO para pontuar pessoas. "
+                + "Use A_CADA para bonificações recorrentes a cada quantidade configurável, META para metas e "
+                + "META_COMPOSTA para recompensas com critérios alternativos. "
                 + "Use o formato brasileiro DD/MM/AAAA em todas as datas do Rally e das missões e DD/MM/AAAA HH:mm:ss "
                 + "nos prazos com data e hora. Não use o padrão ISO 8601 nem separe data e hora com 'T'. "
                 + "O escopo padrão de toda missão é TRIBO: avalie sua pontuação separadamente para cada tribo e credite os pontos à tribo do relatório. "
