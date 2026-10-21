@@ -211,10 +211,12 @@ public class PontuacaoService {
             for (Map<String, Object> regra : regrasMissao) {
                 String tipo = String.valueOf(regra.get("tipo"));
                 boolean percentual = List.of("PERCENTUAL", "FAIXAS_PERCENTUAIS").contains(tipo);
-                if (!percentual && !List.of("A_CADA", "META", "FAIXAS").contains(tipo)) continue;
+                boolean composta = "META_COMPOSTA".equals(tipo);
+                if (!percentual && !composta && !List.of("A_CADA", "META", "FAIXAS").contains(tipo)) continue;
                 String escopo = regras.escopo(regra);
                 Map<UUID, BigDecimal> somas = new HashMap<>();
                 Map<UUID, BigDecimal> basesPercentuais = new HashMap<>();
+                Map<UUID, Map<RegrasPontuacaoService.ReferenciaMetrica, BigDecimal>> metricasCompostas = new HashMap<>();
                 Map<UUID, Set<UUID>> tribosGeradoras = new HashMap<>();
                 for (Relatorio relatorio : relatoriosMissao) {
                     if (!regras.condicaoAtendida(regra.get("quando"), relatorio.getDados(), Map.of())) continue;
@@ -222,19 +224,34 @@ public class PontuacaoService {
                             ? relatorio.getTribo().getNacao().getId() : relatorio.getTribo().getId();
                     tribosGeradoras.computeIfAbsent(agrupador, ignorado -> new HashSet<>())
                             .add(relatorio.getTribo().getId());
-                    BigDecimal quantidade = regras.metric(relatorio,
-                            pessoasPorRelatorio.getOrDefault(relatorio.getId(), List.of()),
+                    List<PessoaPontuada> pessoas = pessoasPorRelatorio.getOrDefault(relatorio.getId(), List.of());
+                    if (composta) {
+                        somas.putIfAbsent(agrupador, BigDecimal.ZERO);
+                        Map<RegrasPontuacaoService.ReferenciaMetrica, BigDecimal> metricas =
+                                metricasCompostas.computeIfAbsent(agrupador, ignorado -> new HashMap<>());
+                        for (RegrasPontuacaoService.ReferenciaMetrica referencia :
+                                regras.referenciasCondicaoAgregada(regra.get("condicao_agregada"))) {
+                            BigDecimal valor = regras.metric(relatorio, pessoas, referencia.campo(),
+                                    referencia.quandoPessoa());
+                            metricas.merge(referencia, valor, BigDecimal::add);
+                        }
+                        continue;
+                    }
+                    BigDecimal quantidade = regras.metric(relatorio, pessoas,
                             String.valueOf(regra.get("campo")), regra.get("quando_pessoa"));
                     somas.merge(agrupador, quantidade, BigDecimal::add);
                     if (percentual) {
                         BigDecimal base = regras.metric(relatorio,
-                                pessoasPorRelatorio.getOrDefault(relatorio.getId(), List.of()),
+                                pessoas,
                                 String.valueOf(regra.get("campo_base")));
                         basesPercentuais.merge(agrupador, base, BigDecimal::add);
                     }
                 }
                 for (Map.Entry<UUID, BigDecimal> soma : somas.entrySet()) {
-                    long pontos = percentual
+                    long pontos = composta
+                            ? regras.calcularBonusAgregado(regra, soma.getValue(),
+                                    metricasCompostas.getOrDefault(soma.getKey(), Map.of()))
+                            : percentual
                             ? regras.calcularBonusPercentual(regra, soma.getValue(),
                                     basesPercentuais.getOrDefault(soma.getKey(), BigDecimal.ZERO))
                             : regras.calcularBonusAgregado(regra, soma.getValue());

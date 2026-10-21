@@ -20,7 +20,9 @@ import java.util.Objects;
 @Service
 public class RegrasPontuacaoService {
     private static final List<String> TIPOS = List.of("POR_PESSOA", "POR_QUANTIDADE", "POR_RELATORIO",
-            "A_CADA", "META", "FAIXAS", "PERCENTUAL", "FAIXAS_PERCENTUAIS");
+            "A_CADA", "META", "META_COMPOSTA", "FAIXAS", "PERCENTUAL", "FAIXAS_PERCENTUAIS");
+
+    public record ReferenciaMetrica(String campo, Object quandoPessoa) {}
 
     public List<Map<String, Object>> normalizar(List<Map<String, Object>> regras, DadosMissao dados) {
         if (regras == null || regras.isEmpty()) return criarRegrasLegadas(dados);
@@ -36,6 +38,7 @@ public class RegrasPontuacaoService {
             if (tipo.equals("PONTOS_POR_QUANTIDADE")) tipo = "POR_QUANTIDADE";
             if (tipo.equals("BONUS_A_CADA")) tipo = "A_CADA";
             if (tipo.equals("BONUS_META")) tipo = "META";
+            if (tipo.equals("BONUS_META_COMPOSTA")) tipo = "META_COMPOSTA";
             if (tipo.equals("BONUS_FAIXAS")) tipo = "FAIXAS";
             if (!TIPOS.contains(tipo)) throw erro("Tipo de regra não suportado: " + tipo + ".");
             regra.put("tipo", tipo);
@@ -104,6 +107,11 @@ public class RegrasPontuacaoService {
     }
 
     public long calcularBonusAgregado(Map<String, Object> regra, BigDecimal quantidade) {
+        return calcularBonusAgregado(regra, quantidade, Map.of());
+    }
+
+    public long calcularBonusAgregado(Map<String, Object> regra, BigDecimal quantidade,
+                                     Map<ReferenciaMetrica, BigDecimal> metricas) {
         String tipo = texto(regra.get("tipo"));
         long pontos = inteiro(regra.get("pontos"), 0);
         if ("A_CADA".equals(tipo)) {
@@ -112,6 +120,9 @@ public class RegrasPontuacaoService {
         }
         if ("META".equals(tipo)) {
             return quantidade.compareTo(BigDecimal.valueOf(inteiro(regra.get("quantidade"), 0))) >= 0 ? pontos : 0;
+        }
+        if ("META_COMPOSTA".equals(tipo)) {
+            return condicaoAgregadaAtendida(regra.get("condicao_agregada"), metricas) ? pontos : 0;
         }
         if ("FAIXAS".equals(tipo)) {
             Object faixasBrutas = regra.get("faixas");
@@ -134,6 +145,56 @@ public class RegrasPontuacaoService {
             return "CUMULATIVA".equalsIgnoreCase(estrategia) ? acumulado : maior;
         }
         return 0;
+    }
+
+    public List<ReferenciaMetrica> referenciasCondicaoAgregada(Object condicaoBruta) {
+        List<ReferenciaMetrica> referencias = new ArrayList<>();
+        coletarReferenciasCondicaoAgregada(condicaoBruta, referencias);
+        return List.copyOf(new java.util.LinkedHashSet<>(referencias));
+    }
+
+    public List<String> camposCondicaoAgregada(Object condicaoBruta) {
+        return referenciasCondicaoAgregada(condicaoBruta).stream()
+                .map(ReferenciaMetrica::campo).distinct().toList();
+    }
+
+    private void coletarReferenciasCondicaoAgregada(Object condicaoBruta,
+                                                     List<ReferenciaMetrica> referencias) {
+        if (!(condicaoBruta instanceof Map<?, ?> condicao)) return;
+        Object grupo = condicao.containsKey("todas") ? condicao.get("todas") : condicao.get("alguma");
+        if (grupo instanceof List<?> itens) {
+            itens.forEach(item -> coletarReferenciasCondicaoAgregada(item, referencias));
+            return;
+        }
+        String campo = texto(condicao.get("campo"));
+        if (campo != null) referencias.add(new ReferenciaMetrica(campo, condicao.get("quando_pessoa")));
+    }
+
+    private boolean condicaoAgregadaAtendida(Object condicaoBruta,
+                                              Map<ReferenciaMetrica, BigDecimal> metricas) {
+        if (!(condicaoBruta instanceof Map<?, ?> condicao)) return false;
+        if (condicao.get("todas") instanceof List<?> todas) {
+            return todas.stream().allMatch(item -> condicaoAgregadaAtendida(item, metricas));
+        }
+        if (condicao.get("alguma") instanceof List<?> alguma) {
+            return alguma.stream().anyMatch(item -> condicaoAgregadaAtendida(item, metricas));
+        }
+        String campo = texto(condicao.get("campo"));
+        BigDecimal atual = campo == null ? null : metricas.get(
+                new ReferenciaMetrica(campo, condicao.get("quando_pessoa")));
+        BigDecimal esperado = decimalEstrito(condicao.get("valor"));
+        if (atual == null || esperado == null) return false;
+        String operador = Objects.toString(condicao.get("operador"), "MAIOR_OU_IGUAL").toUpperCase(Locale.ROOT);
+        int comparacao = atual.compareTo(esperado);
+        return switch (operador) {
+            case "IGUAL", "EQ" -> comparacao == 0;
+            case "DIFERENTE", "NE" -> comparacao != 0;
+            case "MAIOR_QUE", "GT" -> comparacao > 0;
+            case "MAIOR_OU_IGUAL", "GTE" -> comparacao >= 0;
+            case "MENOR_QUE", "LT" -> comparacao < 0;
+            case "MENOR_OU_IGUAL", "LTE" -> comparacao <= 0;
+            default -> false;
+        };
     }
 
     public long calcularBonusPercentual(Map<String, Object> regra, BigDecimal numerador, BigDecimal denominador) {
@@ -262,6 +323,11 @@ public class RegrasPontuacaoService {
                 exigirInteiroPositivo(regra, "quantidade");
                 exigirPontuacao(regra, "pontos");
             }
+            case "META_COMPOSTA" -> {
+                exigirTexto(regra, "escopo");
+                exigirPontuacao(regra, "pontos");
+                validarCondicaoAgregada(regra.get("condicao_agregada"), 0);
+            }
             case "FAIXAS" -> {
                 exigirTexto(regra, "campo");
                 exigirTexto(regra, "escopo");
@@ -332,6 +398,49 @@ public class RegrasPontuacaoService {
         if (!List.of("TRIBOS", "TRIBO_GERADORA").contains(distribuir)) {
             throw erro("A distribuição do bônus deve ser TRIBOS ou TRIBO_GERADORA.");
         }
+    }
+
+    private void validarCondicaoAgregada(Object valor, int profundidade) {
+        validarCondicaoAgregada(valor, profundidade, new int[] {0});
+    }
+
+    private void validarCondicaoAgregada(Object valor, int profundidade, int[] nosVisitados) {
+        if (profundidade > 8)
+            throw erro("A profundidade da meta composta não pode passar do nível oito, contando a raiz como nível zero.");
+        if (++nosVisitados[0] > 200)
+            throw erro("A meta composta pode ter no máximo 200 condições.");
+        if (!(valor instanceof Map<?, ?> condicao))
+            throw erro("A meta composta precisa informar uma condição agregada válida.");
+        boolean todas = condicao.get("todas") instanceof List<?>;
+        boolean alguma = condicao.get("alguma") instanceof List<?>;
+        if (todas || alguma) {
+            if (todas == alguma) throw erro("Use 'todas' ou 'alguma' em cada grupo da meta composta.");
+            List<?> itens = (List<?>) condicao.get(todas ? "todas" : "alguma");
+            if (itens.isEmpty() || itens.size() > 30)
+                throw erro("Cada grupo da meta composta precisa ter de um a 30 condições.");
+            itens.forEach(item -> validarCondicaoAgregada(item, profundidade + 1, nosVisitados));
+            return;
+        }
+        exigirTextoCondicao(condicao, "campo");
+        BigDecimal esperado = decimalEstrito(condicao.get("valor"));
+        if (esperado == null || esperado.signum() < 0 || esperado.compareTo(BigDecimal.valueOf(1_000_000)) > 0)
+            throw erro("Cada condição agregada precisa ter um valor numérico entre 0 e 1.000.000.");
+        String operador = Objects.toString(condicao.get("operador"), "MAIOR_OU_IGUAL").toUpperCase(Locale.ROOT);
+        if (!List.of("IGUAL", "EQ", "DIFERENTE", "NE", "MAIOR_QUE", "GT", "MAIOR_OU_IGUAL", "GTE",
+                "MENOR_QUE", "LT", "MENOR_OU_IGUAL", "LTE").contains(operador)) {
+            throw erro("Operador não suportado na condição agregada: " + operador + ".");
+        }
+        if (condicao.containsKey("quando_pessoa")) {
+            if (!camposDeContagem().contains(Objects.toString(condicao.get("campo"), "").toLowerCase(Locale.ROOT)))
+                throw erro("A condição por pessoa só pode filtrar uma contagem de pessoas.");
+            validarCondicao(condicao.get("quando_pessoa"));
+            validarOrigemQuandoInformada(condicao.get("quando_pessoa"), "PESSOA");
+        }
+    }
+
+    private void exigirTextoCondicao(Map<?, ?> condicao, String chave) {
+        if (texto(condicao.get(chave)) == null)
+            throw erro("Cada condição agregada precisa informar " + chave + ".");
     }
 
     private void validarCondicao(Object valor) {

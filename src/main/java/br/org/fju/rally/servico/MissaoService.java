@@ -167,6 +167,14 @@ public class MissaoService {
             validarCondicoesDaRegra(regra.get("quando"), camposRelatorio, camposPessoa,
                     "POR_PESSOA".equals(tipo) ? "PESSOA" : "RELATORIO");
             validarCondicoesDaRegra(regra.get("quando_pessoa"), camposRelatorio, camposPessoa, "PESSOA");
+            if ("META_COMPOSTA".equals(tipo)) {
+                for (RegrasPontuacaoService.ReferenciaMetrica referencia :
+                        regrasPontuacao.referenciasCondicaoAgregada(regra.get("condicao_agregada"))) {
+                    validarCampoNumerico(referencia.campo(), contagens, porId);
+                    validarCondicoesDaRegra(referencia.quandoPessoa(), camposRelatorio, camposPessoa, "PESSOA");
+                }
+                continue;
+            }
             if (!List.of("POR_QUANTIDADE", "A_CADA", "META", "FAIXAS", "PERCENTUAL", "FAIXAS_PERCENTUAIS")
                     .contains(tipo)) continue;
             validarCampoNumerico(texto(regra.get("campo")), contagens, porId);

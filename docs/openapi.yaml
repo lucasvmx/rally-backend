@@ -533,6 +533,34 @@ paths:
         '404':
           $ref: '#/components/responses/NaoEncontrado'
 
+  /api/v1/relatorios/{id}/dados-missao:
+    get:
+      tags: [Relatórios]
+      summary: Consulta os dados dinâmicos da missão de um relatório
+      description: >-
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto autenticado.
+        Faz uma consulta somente leitura e retorna os campos dinâmicos definidos
+        para a missão separados por escopo: dados contém os campos RELATORIO e
+        cada item de pessoas contém apenas os campos PESSOA, além de nome e
+        categoria. As chaves dos mapas são os IDs dos campos definidos pela
+        missão; campos definidos sem valor são retornados como null. Retorna
+        404 quando o relatório não existe.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+      responses:
+        '200':
+          description: Dados dinâmicos do relatório separados por escopo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaDadosMissaoRelatorio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
   /api/v1/relatorios/{id}/aprovar:
     post:
       tags: [Relatórios]
@@ -1592,6 +1620,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AvisoRelatorio'
+    RespostaDadosMissaoRelatorio:
+      type: object
+      required: [dados, pessoas]
+      description: >-
+        Dados dinâmicos persistidos para a missão do relatório, separados pelos
+        escopos definidos em campos_relatorio. Cada mapa inclui as chaves
+        declaradas para o respectivo escopo; valores não informados aparecem
+        como null. Campos desconhecidos ou pertencentes ao outro escopo não
+        são retornados.
+      properties:
+        dados:
+          type: object
+          description: Valores dos campos definidos com escopo RELATORIO, indexados pelo ID.
+          additionalProperties: true
+        pessoas:
+          type: array
+          description: Pessoas associadas ao relatório com seus campos de escopo PESSOA.
+          items:
+            $ref: '#/components/schemas/PessoaDadosMissaoRelatorio'
+    PessoaDadosMissaoRelatorio:
+      type: object
+      required: [nome, categoria, dados]
+      properties:
+        nome:
+          type: string
+        categoria:
+          type: string
+        dados:
+          type: object
+          description: Valores dos campos definidos com escopo PESSOA, indexados pelo ID.
+          additionalProperties: true
     AvisoRelatorio:
       type: object
       required: [codigo, mensagem]
@@ -1726,6 +1785,10 @@ components:
         POR_PESSOA exige categoria e pontos; POR_QUANTIDADE exige campo e
         pontos_por_unidade; POR_RELATORIO exige pontos; A_CADA e META exigem
         campo, escopo, quantidade e pontos; FAIXAS exige campo, escopo e faixas;
+        META_COMPOSTA exige escopo, pontos e condicao_agregada; a condição
+        agregada combina contagens somadas separadamente no escopo por meio de
+        grupos todas (AND) e alguma (OR), com folhas numéricas; pode usar
+        quando_pessoa numa folha para filtrar uma contagem de pessoas;
         PERCENTUAL exige campo, campo_base, percentual e pontos;
         FAIXAS_PERCENTUAIS exige campo, campo_base, escopo e faixas. As regras
         percentuais somam numerador e denominador por TRIBO ou NACAO; com base
@@ -1735,14 +1798,22 @@ components:
       properties:
         tipo:
           type: string
-          enum: [POR_PESSOA, POR_QUANTIDADE, POR_RELATORIO, A_CADA, META, FAIXAS, PERCENTUAL, FAIXAS_PERCENTUAIS, PONTOS_POR_PESSOA, PONTOS_POR_QUANTIDADE, BONUS_A_CADA, BONUS_META, BONUS_FAIXAS]
-          description: Os aliases são normalizados para os tipos canônicos correspondentes.
+          enum: [POR_PESSOA, POR_QUANTIDADE, POR_RELATORIO, A_CADA, META, META_COMPOSTA, FAIXAS, PERCENTUAL, FAIXAS_PERCENTUAIS, PONTOS_POR_PESSOA, PONTOS_POR_QUANTIDADE, BONUS_A_CADA, BONUS_META, BONUS_META_COMPOSTA, BONUS_FAIXAS]
+          description: >-
+            Tipos canônicos aceitos: POR_PESSOA, POR_QUANTIDADE, POR_RELATORIO,
+            A_CADA, META, META_COMPOSTA, FAIXAS, PERCENTUAL e
+            FAIXAS_PERCENTUAIS. Os aliases PONTOS_POR_PESSOA,
+            PONTOS_POR_QUANTIDADE, BONUS_A_CADA, BONUS_META,
+            BONUS_META_COMPOSTA e BONUS_FAIXAS são normalizados para os tipos
+            canônicos correspondentes ao criar a missão; sugestões da IA
+            podem preservar o valor que ela produziu.
         categoria:
           type: string
         pontos:
           type: integer
           minimum: 0
           maximum: 1000000
+          description: Pontos concedidos; obrigatório para META_COMPOSTA.
         campo:
           type: string
           description: >-
@@ -1775,7 +1846,9 @@ components:
         escopo:
           type: string
           enum: [TRIBO, NACAO]
-          description: TRIBO agrega por tribo; NACAO agrega por nação e soma o bônus às tribos da nação.
+          description: >-
+            Obrigatório em META_COMPOSTA. TRIBO agrega por tribo; NACAO agrega
+            por nação e soma o bônus às tribos da nação.
         distribuir_para:
           type: string
           enum: [TRIBOS, TRIBO_GERADORA]
@@ -1819,6 +1892,15 @@ components:
             uma contagem de pessoas: integrantes, pessoas, total_pessoas,
             novos_afastados, novos, afastados ou convidados. Reduz essa
             contagem antes de agregá-la; campo_base não recebe esse filtro.
+        condicao_agregada:
+          allOf:
+            - $ref: '#/components/schemas/CondicaoAgregada'
+          description: >-
+            Obrigatória para META_COMPOSTA. Cada folha compara a métrica
+            numérica do campo, agregada a partir dos relatórios aprovados, com
+            valor. O bônus pontos é concedido uma única vez quando a condição
+            composta é atendida no escopo da regra. Para escopo NACAO, a
+            distribuição padrão é para TRIBOS.
       additionalProperties: true
     FaixaPontuacao:
       type: object
@@ -1889,6 +1971,67 @@ components:
             - type: number
             - type: boolean
       additionalProperties: true
+    CondicaoAgregada:
+      type: object
+      description: >-
+        Árvore recursiva usada somente em META_COMPOSTA. Cada nó é um grupo
+        todas (AND) ou alguma (OR), nunca ambos, com de 1 a 30 condições, ou
+        uma folha com campo, operador e valor. A profundidade máxima aceita é
+        8 (raiz no nível 0). As folhas comparam a soma da métrica no escopo da
+        regra; campo segue as métricas aceitas para campo em RegraPontuacao,
+        incluindo contagens suportadas e campos número do relatório. Operadores aceitos são IGUAL/EQ,
+        DIFERENTE/NE, MAIOR_QUE/GT, MAIOR_OU_IGUAL/GTE, MENOR_QUE/LT e
+        MENOR_OU_IGUAL/LTE. valor deve ser numérico entre 0 e 1.000.000; o
+        operador padrão é MAIOR_OU_IGUAL. quando_pessoa é opcional e filtra
+        pessoas antes da soma, somente para contagens de pessoas. O backend
+        também aceita valor como string numérica conversível para decimal.
+      oneOf:
+        - type: object
+          required: [todas]
+          properties:
+            todas:
+              type: array
+              minItems: 1
+              maxItems: 30
+              items:
+                $ref: '#/components/schemas/CondicaoAgregada'
+          additionalProperties: true
+        - type: object
+          required: [alguma]
+          properties:
+            alguma:
+              type: array
+              minItems: 1
+              maxItems: 30
+              items:
+                $ref: '#/components/schemas/CondicaoAgregada'
+          additionalProperties: true
+        - type: object
+          required: [campo, valor]
+          properties:
+            campo:
+              type: string
+              minLength: 1
+            operador:
+              type: string
+              enum: [IGUAL, EQ, DIFERENTE, NE, MAIOR_QUE, GT, MAIOR_OU_IGUAL, GTE, MENOR_QUE, LT, MENOR_OU_IGUAL, LTE]
+              default: MAIOR_OU_IGUAL
+            valor:
+              description: Número entre 0 e 1.000.000; strings numéricas também são convertidas pelo backend.
+              anyOf:
+                - type: number
+                  minimum: 0
+                  maximum: 1000000
+                - type: string
+            quando_pessoa:
+              allOf:
+                - $ref: '#/components/schemas/CondicaoPontuacao'
+              description: >-
+                Condição avaliada para cada pessoa antes da soma. Só é válida
+                quando campo é uma das contagens integrantes, pessoas,
+                total_pessoas, novos_afastados, novos, afastados ou convidados;
+                a origem, se indicada nas folhas, precisa ser PESSOA.
+          additionalProperties: true
     RequisicaoCriarMissoes:
       type: object
       required: [missoes]

@@ -113,6 +113,12 @@ public class RallyController {
         return relatorioService.listar(requisicao);
     }
 
+    @GetMapping("/relatorios/{id}/dados-missao")
+    public RespostaDadosMissaoRelatorio dadosMissaoRelatorio(@PathVariable UUID id,
+                                                               HttpServletRequest requisicao) {
+        return relatorioService.dadosMissao(id, requisicao);
+    }
+
     @PostMapping("/relatorios")
     public RespostaRelatorio criarRelatorio(@Valid @RequestBody RequisicaoRelatorio corpo,
                                             HttpServletRequest requisicao) {

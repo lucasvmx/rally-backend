@@ -2,6 +2,7 @@ package br.org.fju.rally.servico;
 
 import br.org.fju.rally.api.PessoaRelatorio;
 import br.org.fju.rally.api.RequisicaoRelatorio;
+import br.org.fju.rally.api.RespostaDadosMissaoRelatorio;
 import br.org.fju.rally.api.RespostaRelatorio;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.PessoaPontuada;
@@ -64,6 +65,28 @@ public class RelatorioService {
                         relatorio.getTribo().getNacao().getId()))
                 .map(RespostaRelatorio::de)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public RespostaDadosMissaoRelatorio dadosMissao(UUID id, HttpServletRequest requisicao) {
+        acessoService.exigirAssistente(requisicao);
+        Relatorio relatorio = relatorioRepositorio.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Relatório não encontrado."));
+
+        List<Map<String, Object>> campos = relatorio.getMissao().getCamposRelatorio() == null
+                ? List.of() : relatorio.getMissao().getCamposRelatorio();
+        Map<String, Object> dadosRelatorio = somenteCampos(campos, "RELATORIO", relatorio.getDados());
+        boolean possuiCamposPessoa = campos.stream().anyMatch(campo ->
+                "PESSOA".equalsIgnoreCase(Objects.toString(campo.get("escopo"), "RELATORIO")));
+        List<RespostaDadosMissaoRelatorio.Pessoa> pessoas = possuiCamposPessoa
+                ? pessoaRepositorio.findByRelatorioId(id).stream()
+                        .map(pessoa -> new RespostaDadosMissaoRelatorio.Pessoa(
+                                pessoa.getNome(), pessoa.getCategoria(),
+                                somenteCampos(campos, "PESSOA", pessoa.getDados())))
+                        .toList()
+                : List.of();
+
+        return new RespostaDadosMissaoRelatorio(dadosRelatorio, pessoas);
     }
 
     @Transactional
@@ -269,6 +292,20 @@ public class RelatorioService {
                     throw erro("Opção inválida para " + titulo + ".");
             }
         }
+    }
+
+    private static Map<String, Object> somenteCampos(List<Map<String, Object>> definicoes, String escopo,
+                                                     Map<String, Object> dadosOriginais) {
+        Map<String, Object> resultado = new LinkedHashMap<>();
+        Map<String, Object> dados = dadosOriginais == null ? Map.of() : dadosOriginais;
+        for (Map<String, Object> definicao : definicoes) {
+            String id = Objects.toString(definicao.get("id"), "");
+            String escopoDefinido = Objects.toString(definicao.get("escopo"), "RELATORIO");
+            if (!id.isBlank() && escopo.equalsIgnoreCase(escopoDefinido)) {
+                resultado.put(id, dados.get(id));
+            }
+        }
+        return resultado;
     }
 
     private String nomeValido(String nome) {
