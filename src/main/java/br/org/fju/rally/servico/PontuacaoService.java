@@ -4,11 +4,13 @@ import br.org.fju.rally.api.RespostaPlacar;
 import br.org.fju.rally.dominio.MetaNacional;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.PessoaPontuada;
+import br.org.fju.rally.dominio.PontuacaoManual;
 import br.org.fju.rally.dominio.Relatorio;
 import br.org.fju.rally.dominio.Rally;
 import br.org.fju.rally.dominio.Tribo;
 import br.org.fju.rally.repositorio.MetaNacionalRepositorio;
 import br.org.fju.rally.repositorio.PessoaPontuadaRepositorio;
+import br.org.fju.rally.repositorio.PontuacaoManualRepositorio;
 import br.org.fju.rally.repositorio.RallyRepositorio;
 import br.org.fju.rally.repositorio.RelatorioRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
@@ -39,6 +41,7 @@ public class PontuacaoService {
     private final RallyRepositorio rallyRepositorio;
     private final PessoaPontuadaRepositorio pessoaRepositorio;
     private final RegrasPontuacaoService regras;
+    private final PontuacaoManualRepositorio pontuacaoManualRepositorio;
 
     @Autowired
     public PontuacaoService(RelatorioRepositorio relatorioRepositorio,
@@ -46,20 +49,32 @@ public class PontuacaoService {
                             MetaNacionalRepositorio metaNacionalRepositorio,
                             RallyRepositorio rallyRepositorio,
                             PessoaPontuadaRepositorio pessoaRepositorio,
-                            RegrasPontuacaoService regras) {
+                            RegrasPontuacaoService regras,
+                            PontuacaoManualRepositorio pontuacaoManualRepositorio) {
         this.relatorioRepositorio = relatorioRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.metaNacionalRepositorio = metaNacionalRepositorio;
         this.rallyRepositorio = rallyRepositorio;
         this.pessoaRepositorio = pessoaRepositorio;
         this.regras = regras;
+        this.pontuacaoManualRepositorio = pontuacaoManualRepositorio;
+    }
+
+    public PontuacaoService(RelatorioRepositorio relatorioRepositorio,
+                            TriboRepositorio triboRepositorio,
+                            MetaNacionalRepositorio metaNacionalRepositorio,
+                            RallyRepositorio rallyRepositorio,
+                            PessoaPontuadaRepositorio pessoaRepositorio,
+                            RegrasPontuacaoService regras) {
+        this(relatorioRepositorio, triboRepositorio, metaNacionalRepositorio, rallyRepositorio,
+                pessoaRepositorio, regras, null);
     }
 
     public PontuacaoService(RelatorioRepositorio relatorioRepositorio,
                             TriboRepositorio triboRepositorio,
                             MetaNacionalRepositorio metaNacionalRepositorio) {
         this(relatorioRepositorio, triboRepositorio, metaNacionalRepositorio, null, null,
-                new RegrasPontuacaoService());
+                new RegrasPontuacaoService(), null);
     }
 
     public int calcularPontos(Relatorio relatorio) {
@@ -86,6 +101,7 @@ public class PontuacaoService {
                     .filter(relatorio -> relatorio.getMissao().getRally().getId().equals(rallyAtual.getId()))
                     .toList();
             adicionarPontosDosRelatorios(aprovados, pontosPorTribo, pessoasPorTribo, relatoriosPorTribo);
+            adicionarPontuacoesManuais(rallyAtual.getId(), pontosPorTribo);
             aplicarBonificacoesNacionaisLegadas(aprovados, bonusPorNacao);
             aplicarBonificacoesDinamicas(aprovados, tribos, pontosPorTribo, bonusPorNacao);
         }
@@ -109,6 +125,15 @@ public class PontuacaoService {
                     placar.relatoriosAprovados(), placar.bonusNacional()));
         }
         return resposta;
+    }
+
+    private void adicionarPontuacoesManuais(UUID rallyId, Map<UUID, Long> pontosPorTribo) {
+        if (pontuacaoManualRepositorio == null) return;
+        for (PontuacaoManual pontuacao : pontuacaoManualRepositorio.findAllByRallyId(rallyId)) {
+            for (Tribo tribo : pontuacao.getTribosDestinatarias()) {
+                pontosPorTribo.merge(tribo.getId(), (long) pontuacao.getPontosPorTribo(), Long::sum);
+            }
+        }
     }
 
     private void adicionarPontosDosRelatorios(List<Relatorio> aprovados,

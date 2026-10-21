@@ -7,6 +7,7 @@ import br.org.fju.rally.repositorio.RallyRepositorio;
 import br.org.fju.rally.servico.MissaoService;
 import br.org.fju.rally.servico.GoogleDriveService;
 import br.org.fju.rally.servico.PontuacaoService;
+import br.org.fju.rally.servico.PontuacaoManualService;
 import br.org.fju.rally.servico.RelatorioService;
 import br.org.fju.rally.servico.TriboService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,12 +41,13 @@ public class RallyController {
     private final GoogleDriveService googleDriveService;
     private final RallyRepositorio rallyRepositorio;
     private final TriboService triboService;
+    private final PontuacaoManualService pontuacaoManualService;
 
     public RallyController(NacaoRepositorio nacaoRepositorio, TriboRepositorio triboRepositorio,
                            MissaoRepositorio missaoRepositorio, RelatorioService relatorioService,
                            PontuacaoService pontuacaoService, MissaoService missaoService,
                            GoogleDriveService googleDriveService, RallyRepositorio rallyRepositorio,
-                           TriboService triboService) {
+                           TriboService triboService, PontuacaoManualService pontuacaoManualService) {
         this.nacaoRepositorio = nacaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.missaoRepositorio = missaoRepositorio;
@@ -55,6 +57,7 @@ public class RallyController {
         this.googleDriveService = googleDriveService;
         this.rallyRepositorio = rallyRepositorio;
         this.triboService = triboService;
+        this.pontuacaoManualService = pontuacaoManualService;
     }
 
     @GetMapping("/saude")
@@ -136,6 +139,17 @@ public class RallyController {
     @GetMapping("/placar")
     public List<RespostaPlacar> placar() {
         return pontuacaoService.gerarPlacar();
+    }
+
+    @GetMapping("/pontuacoes-manuais")
+    public List<RespostaPontuacaoManual> pontuacoesManuais(HttpServletRequest requisicao) {
+        return pontuacaoManualService.listar(requisicao);
+    }
+
+    @PostMapping("/pontuacoes-manuais")
+    public RespostaPontuacaoManual registrarPontuacaoManual(
+            @Valid @RequestBody RequisicaoPontuacaoManual corpo, HttpServletRequest requisicao) {
+        return pontuacaoManualService.registrar(corpo, requisicao);
     }
 
     @PostMapping("/regras/interpretar")

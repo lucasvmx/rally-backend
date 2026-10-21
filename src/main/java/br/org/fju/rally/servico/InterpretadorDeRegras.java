@@ -432,7 +432,11 @@ public class InterpretadorDeRegras {
                 + "a chave raiz 'regras'. Todas as chaves e valores de domínio devem estar em português brasileiro. "
                 + "Cada regra deve ter nome_missao, data_inicio, data_fim, prazo_envio, pontos_por_pessoa, "
                 + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Preserve missões separadas, "
-                + "missões relâmpago e metas por nação. Nunca aprove pontuação; apenas sugira regras para revisão humana.";
+                + "missões relâmpago e metas por nação. O escopo padrão de cada missão é TRIBO: credite os pontos de cada relatório à tribo correspondente. "
+                + "A pontuação da nação é somente a soma dos pontos de suas tribos, sem pontuação separada para a nação. "
+                + "Metas nacionais podem agregar os relatórios das tribos, mas distribua a premiação às tribos. "
+                + "Bonificações iguais para todas as tribos, acionadas pela conclusão de uma atividade por uma tribo chamada, devem ser registradas manualmente. "
+                + "Nunca aprove pontuação; apenas sugira regras para revisão humana.";
     }
 
     private String promptSistemaMissoes() {
@@ -443,6 +447,12 @@ public class InterpretadorDeRegras {
                 + "pontos_por_pessoa, pontos_por_novo_afastado, bonificacao_a_cada_cinco_novos, meta_nacional, "
                 + "bonificacao_meta_nacional, exige_foto, tipo_pessoa ('integrante' ou 'novo_ou_afastado') e "
                 + "link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e campos_relatorio. "
+                + "O escopo padrão de toda missão é TRIBO: avalie sua pontuação separadamente para cada tribo e credite os pontos à tribo do relatório. "
+                + "Quando uma regra aceitar escopo, use TRIBO por padrão; use NACAO somente se a atividade exigir explicitamente um cálculo agregado nacional, "
+                + "e distribua qualquer pontuação resultante às tribos com distribuir_para TRIBOS. A pontuação de uma nação é sempre a soma dos pontos finais de suas tribos; "
+                + "não crie pontuação separada para a nação nem conte novamente um bônus nacional no total dela. Uma atividade em que uma tribo chamada cumpre a tarefa "
+                + "e todas as tribos da nação recebem a mesma bonificação deve ser registrada manualmente fora das regras da missão; preserve a atividade na descrição "
+                + "e registre essa necessidade em ambiguidades. "
                 + "Estruture regras_pontuacao como uma lista de objetos JSON: POR_PESSOA (categoria, pontos, quando), "
                 + "POR_QUANTIDADE (campo, pontos_por_unidade, quando), POR_RELATORIO (pontos, quando), A_CADA "
                 + "(campo, quantidade, pontos, escopo TRIBO ou NACAO), META (campo, quantidade, pontos, escopo "
