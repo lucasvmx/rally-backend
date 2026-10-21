@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -137,8 +138,8 @@ public class RallyController {
     }
 
     @GetMapping("/placar")
-    public List<RespostaPlacar> placar() {
-        return pontuacaoService.gerarPlacar();
+    public List<RespostaPlacar> placar(@RequestParam(name = "rally_id", required = false) UUID rallyId) {
+        return rallyId == null ? pontuacaoService.gerarPlacar() : pontuacaoService.gerarPlacar(rallyId);
     }
 
     @GetMapping("/pontuacoes-manuais")

@@ -22,9 +22,11 @@ tags:
   - name: Saúde
   - name: Dados do Rally
     description: >-
-      Missões pertencem a um rally com período próprio. O placar considera os
-      relatórios aprovados do rally que contém a data atual em America/Sao_Paulo;
-      quando não há rally ativo, o placar retorna as tribos sem pontos.
+      Missões e pontuações manuais pertencem a um rally com período próprio. O
+      placar combina relatórios aprovados e pontuações manuais do rally
+      consultado. Sem seleção explícita, considera o rally que contém a data
+      atual em America/Sao_Paulo; quando não há rally ativo, retorna as tribos
+      sem pontos.
   - name: Relatórios
   - name: Regras
   - name: Formulários
@@ -656,12 +658,23 @@ paths:
   /api/v1/placar:
     get:
       tags: [Dados do Rally]
-      summary: Gera o placar das tribos
+      summary: Gera o placar das tribos para um Rally
       description: >-
-        Usa somente relatórios aprovados vinculados ao rally ativo na data
-        atual de America/Sao_Paulo. Depois da data_fim ou na ausência de rally
-        ativo, as tribos são retornadas com pontuação zero. Em períodos
+        Quando rally_id é informado, calcula as pontuações do Rally indicado,
+        inclusive após o encerramento do período, combinando relatórios
+        aprovados e pontuações manuais registradas para esse Rally. Sem este
+        parâmetro, mantém o comportamento padrão: considera o rally ativo na
+        data atual de America/Sao_Paulo. Depois da data_fim ou na ausência de
+        rally ativo, as tribos são retornadas com pontuação zero. Em períodos
         sobrepostos, usa o rally com data_inicio mais recente.
+      parameters:
+        - name: rally_id
+          in: query
+          required: false
+          description: UUID do Rally cujo placar deve ser consultado.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Tribos classificadas por pontuação
@@ -671,6 +684,10 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RespostaPlacar'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
         '401':
           $ref: '#/components/responses/NaoAutenticado'
         '403':

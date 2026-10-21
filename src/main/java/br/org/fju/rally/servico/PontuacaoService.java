@@ -15,8 +15,10 @@ import br.org.fju.rally.repositorio.RallyRepositorio;
 import br.org.fju.rally.repositorio.RelatorioRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -86,11 +88,25 @@ public class PontuacaoService {
     @Transactional(readOnly = true)
     public List<RespostaPlacar> gerarPlacar() {
         LocalDate hoje = LocalDate.now(ZoneId.of("America/Sao_Paulo"));
-        List<Tribo> tribos = triboRepositorio.findAll();
         Rally rallyAtual = rallyRepositorio == null ? null : rallyRepositorio.findAll().stream()
                 .filter(rally -> rally.contem(hoje))
                 .max(Comparator.comparing(Rally::getDataInicio))
                 .orElse(null);
+        return gerarPlacar(rallyAtual);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RespostaPlacar> gerarPlacar(UUID rallyId) {
+        if (rallyRepositorio == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado.");
+        }
+        Rally rally = rallyRepositorio.findById(rallyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado."));
+        return gerarPlacar(rally);
+    }
+
+    private List<RespostaPlacar> gerarPlacar(Rally rallyAtual) {
+        List<Tribo> tribos = triboRepositorio.findAll();
 
         Map<UUID, Long> pontosPorTribo = new HashMap<>();
         Map<UUID, Long> pessoasPorTribo = new HashMap<>();
