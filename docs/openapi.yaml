@@ -13,7 +13,9 @@ info:
     corpo, sem token na URL. Login Google exige e-mail verificado e conta
     autorizada ou provisionada. A role e o escopo são obtidos da identidade
     autenticada, não de cabeçalhos definidos pelo cliente. As operações indicam
-    os papéis e escopos exigidos quando aplicável.
+    os papéis e escopos exigidos quando aplicável. Logins locais com senha
+    provisória criam uma sessão sem access_token e exigem a troca da senha antes
+    de acessar outras rotas privadas.
 servers:
   - url: http://localhost:8080
     description: Execução local padrão
@@ -80,7 +82,10 @@ paths:
         navegador para / no fluxo de entrada normal; o cliente consulta esta
         rota com a sessão do navegador e recebe role, os IDs de escopo
         (tribe_id ou nation_id) e access_token no corpo JSON. O token não é
-        enviado na URL.
+        enviado na URL. Em uma sessão local autenticada por senha provisória,
+        troca_senha_obrigatoria é true e access_token é null; essa sessão só
+        autoriza, entre as rotas privadas, a troca da senha provisória e o
+        logout. access_token também é null para uma sessão anônima.
       security:
         - bearerJwt: []
         - sessaoAplicacao: []
@@ -108,10 +113,15 @@ paths:
         senha incorreta bloqueia a conta e já retorna 423; novas tentativas
         também retornam 423. Falhas para conta inexistente ou sem usuário Rally
         retornam 401, mas não incrementam o contador de bloqueio. Um login local
-        correto zera o contador. Uma autenticação bem-sucedida também retorna no
-        corpo role, os IDs de escopo aplicáveis e access_token. O JWT tem validade
-        de 48 horas e deve ser enviado em requisições privadas no cabeçalho HTTP
-        Authorization com o esquema Bearer.
+        correto zera o contador e atualiza ultimo_login_em. Um login com senha
+        provisória retorna 200 com uma sessão autenticada,
+        troca_senha_obrigatoria true e access_token null; essa sessão não
+        autoriza outras operações privadas além da troca de senha e logout.
+        Depois da troca, o servidor encerra a sessão e é necessário fazer login
+        novamente. Login com senha não provisória retorna role, os IDs de escopo
+        aplicáveis e access_token.
+        O JWT tem validade de 48 horas e deve ser enviado em requisições privadas
+        no cabeçalho HTTP Authorization com o esquema Bearer.
       security: []
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -123,7 +133,9 @@ paths:
               $ref: '#/components/schemas/RequisicaoLogin'
       responses:
         '200':
-          description: Login local concluído; retorna a sessão e o JWT no corpo JSON
+          description: >-
+            Login local concluído. access_token é null quando troca_senha_obrigatoria
+            é true; o login normal retorna o JWT no corpo JSON.
           content:
             application/json:
               schema:
@@ -252,6 +264,54 @@ paths:
             Identidade Google sem e-mail verificado ou não vinculada a uma conta
             autorizada do Rally; também pode indicar falha de CSRF, que pode
             ser respondida sem corpo pelo filtro Spring Security
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/autenticacao/senha-provisoria:
+    put:
+      tags: [Autenticação]
+      summary: Troca a senha provisória pelo segredo escolhido pela pessoa
+      description: >-
+        Requer a sessão local criada por um login bem-sucedido com senha
+        provisória. Não aceita sessão comum, sessão Google ou JWT. A senha deve
+        conter de 12 a 128 caracteres e no máximo 72 bytes em UTF-8. Depois de
+        salvar a senha, o servidor encerra a sessão; a pessoa precisa entrar
+        novamente com a nova senha. A geração de outra senha provisória invalida
+        a senha atual e sessões locais anteriores.
+      security:
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoTrocaSenhaProvisoria'
+      responses:
+        '204':
+          description: Senha alterada e sessão encerrada; não há corpo de resposta
+        '400':
+          description: Corpo inválido, senha com menos de 12 caracteres ou acima de 72 bytes UTF-8
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          description: >-
+            A sessão não foi criada por login provisório, a senha já foi trocada,
+            ou o token CSRF está ausente ou inválido. A rejeição do filtro pode
+            não conter corpo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: Não há senha provisória pendente de troca
           content:
             application/json:
               schema:
@@ -855,6 +915,32 @@ paths:
           description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
   /api/v1/usuarios:
+    get:
+      tags: [Usuários]
+      summary: Lista as contas cadastradas
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Retorna todas as contas
+        em ordem de e-mail, incluindo o tipo, o papel, o escopo, criada_em e
+        ultimo_login_em. ultimo_login_em é null quando não há login registrado.
+        Logins anteriores à implantação deste campo não podem ser recuperados,
+        portanto contas existentes podem não ter histórico retroativo. Senhas e
+        identificadores Google não são incluídos.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      responses:
+        '200':
+          description: Contas cadastradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContaGerenciada'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
     post:
       tags: [Usuários]
       summary: Cria uma conta de usuário com papel e escopo
@@ -869,13 +955,18 @@ paths:
         ser omitido ou nulo. O ID informado precisa existir. ASSISTENTE e
         ADMINISTRADOR_SISTEMA não aceitam escopo de tribo ou nação.
 
-        Para account_type LOCAL, initial_password é obrigatório e deve conter
-        de 12 a 128 caracteres, com limite adicional de 72 bytes em UTF-8. A
-        senha é codificada pelo PasswordEncoder configurado antes de ser
-        armazenada. Contas LOCAL autenticam-se com e-mail e senha e não aceitam
-        login pelo Google. Para account_type GOOGLE, omita initial_password; um
-        valor não vazio é rejeitado. A identidade Google é vinculada no primeiro
-        login com e-mail verificado correspondente ao usuário provisionado.
+        Para account_type LOCAL, envie initial_password com 12 a 128 caracteres
+        (até 72 bytes em UTF-8), ou defina gerar_senha_provisoria como true e
+        omita initial_password. A senha provisória gerada tem quatro palavras
+        curtas separadas por hífens, contém 27 caracteres e é incluída somente
+        nesta resposta; o servidor armazena apenas o hash. No primeiro login
+        com ela, a pessoa precisa escolher uma senha própria. Se
+        gerar_senha_provisoria for omitido ou false, initial_password é
+        obrigatório. Para account_type GOOGLE, omita initial_password e não
+        defina gerar_senha_provisoria como true; um initial_password não vazio
+        ou a geração de senha provisória é rejeitado. A identidade Google é
+        vinculada no primeiro login com e-mail verificado correspondente ao
+        usuário provisionado.
       security:
         - bearerJwt: []
         - sessaoAplicacao: []
@@ -889,7 +980,9 @@ paths:
               $ref: '#/components/schemas/RequisicaoCriacaoUsuario'
       responses:
         '201':
-          description: Conta criada
+          description: >-
+            Conta criada. senha_provisoria contém a senha gerada apenas quando
+            gerar_senha_provisoria=true; nos demais casos, é null.
           content:
             application/json:
               schema:
@@ -901,7 +994,125 @@ paths:
         '403':
           $ref: '#/components/responses/AcessoNegado'
         '409':
-          description: Já existe uma conta com o e-mail ou o papel conflita com a configuração do administrador inicial
+          description: >-
+            Já existe uma conta com o e-mail ou o papel conflita com a
+            configuração do administrador inicial.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/usuarios/{id}:
+    put:
+      tags: [Usuários]
+      summary: Atualiza o papel e o escopo de uma conta
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Email e account_type
+        são imutáveis nesta operação. O assistente não pode editar contas de
+        ADMINISTRADOR_SISTEMA nem atribuir esse papel; somente um administrador
+        do sistema pode fazê-lo. Para COORDENADOR_TRIBO, tribe_id é obrigatório
+        e nation_id deve ser omitido ou nulo; para COORDENADOR_NACAO, nation_id
+        é obrigatório e tribe_id deve ser omitido ou nulo. ASSISTENTE e
+        ADMINISTRADOR_SISTEMA não aceitam escopo. A tribo ou nação precisa
+        existir. O administrador inicial e o último administrador do sistema
+        não podem perder esse papel.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AtualizacaoUsuario'
+      responses:
+        '200':
+          description: Conta atualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContaGerenciada'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O administrador inicial ou o último administrador não pode perder seu papel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+    delete:
+      tags: [Usuários]
+      summary: Exclui uma conta
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Assistentes não podem
+        excluir contas de ADMINISTRADOR_SISTEMA. Não é permitido excluir a
+        própria conta, o administrador inicial configurado ou o último
+        administrador do sistema. A exclusão também revoga a identidade Google
+        e o e-mail cadastrados para impedir novo acesso ou provisionamento
+        automático.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Conta excluída; não há corpo de resposta
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: A conta não pode ser excluída por ser própria, inicial ou o último administrador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/usuarios/{id}/senha-provisoria:
+    post:
+      tags: [Usuários]
+      summary: Gera uma senha provisória para uma conta local
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Uma senha nova é
+        gerada para uma conta LOCAL, invalida a senha anterior e sessões
+        locais emitidas antes da redefinição e marca a próxima autenticação
+        como provisória. A senha contém quatro palavras curtas separadas por
+        hífens (27 caracteres). Ela aparece apenas nesta resposta; o servidor
+        persiste somente o hash. No login seguinte, a pessoa deve defini-la
+        novamente antes de usar outras rotas privadas. Assistentes não podem
+        redefinir senhas de contas ADMINISTRADOR_SISTEMA.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/UsuarioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '200':
+          description: Senha provisória gerada; este é o único retorno do segredo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaSenhaProvisoria'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          description: Conta local não encontrada
           content:
             application/json:
               schema:
@@ -1257,6 +1468,14 @@ components:
       description: E-mail do usuário cuja role e escopo serão definidos.
       schema:
         type: string
+    UsuarioId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID da conta de usuário.
+      schema:
+        type: string
+        format: uuid
     RelatorioId:
       name: id
       in: path
@@ -1369,6 +1588,17 @@ components:
           description: >-
             Nova senha local. Além do intervalo de 12 a 128 caracteres, o
             endpoint rejeita valores com mais de 72 bytes em UTF-8.
+    RequisicaoTrocaSenhaProvisoria:
+      type: object
+      required: [senha]
+      properties:
+        senha:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: >-
+            Senha escolhida pela pessoa. Deve conter de 12 a 128 caracteres e
+            no máximo 72 bytes em UTF-8.
     PapelUsuario:
       type: string
       enum: [ASSISTENTE, COORDENADOR_TRIBO, COORDENADOR_NACAO, ADMINISTRADOR_SISTEMA]
@@ -1401,15 +1631,23 @@ components:
           $ref: '#/components/schemas/TipoContaUsuario'
         initial_password:
           type: string
+          minLength: 12
           maxLength: 128
           description: >-
             Obrigatória para account_type LOCAL, com mínimo de 12 caracteres e
             máximo de 72 bytes UTF-8. A senha é codificada com o PasswordEncoder
             configurado antes do armazenamento. Deve ser omitida para GOOGLE;
             um valor não vazio é rejeitado.
+        gerar_senha_provisoria:
+          type: boolean
+          description: >-
+            Quando true para conta LOCAL, gera uma senha provisória na resposta
+            e exige que ela seja trocada no primeiro login. Nesse caso, omita
+            initial_password. Omitido ou false exige initial_password em contas
+            locais; não se aplica a contas GOOGLE.
     RespostaProvisionamento:
       type: object
-      required: [id, email, role, tribe_id, nation_id, account_type]
+      required: [id, email, role, tribe_id, nation_id, account_type, senha_provisoria]
       properties:
         id:
           type: string
@@ -1429,6 +1667,74 @@ components:
           nullable: true
         account_type:
           $ref: '#/components/schemas/TipoContaUsuario'
+        senha_provisoria:
+          type: string
+          nullable: true
+          description: >-
+            Senha em texto claro somente quando foi gerada para esta criação;
+            null nos demais casos. Ela não pode ser consultada depois desta
+            resposta.
+    AtualizacaoUsuario:
+      type: object
+      required: [role]
+      properties:
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_TRIBO; deve ser omitido ou nulo para os outros papéis.
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_NACAO; deve ser omitido ou nulo para os outros papéis.
+    ContaGerenciada:
+      type: object
+      required: [id, email, role, tribe_id, nation_id, account_type, criada_em, ultimo_login_em]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+        account_type:
+          $ref: '#/components/schemas/TipoContaUsuario'
+        criada_em:
+          type: string
+          format: date-time
+          description: Data e hora em que a conta Rally foi cadastrada.
+        ultimo_login_em:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            Data e hora do último login registrado; null quando não há registro.
+            Contas existentes podem não ter histórico anterior à V16.
+    RespostaSenhaProvisoria:
+      type: object
+      required: [senha_provisoria]
+      properties:
+        senha_provisoria:
+          type: string
+          minLength: 27
+          maxLength: 27
+          description: >-
+            Gerada por SecureRandom como quatro palavras fonéticas separadas
+            por hífens (27 caracteres). O segredo é retornado apenas nesta
+            operação e o servidor persiste somente seu hash.
     RespostaSessao:
       type: object
       description: >-
@@ -1436,7 +1742,7 @@ components:
         escopo; para COORDENADOR_NACAO, nation_id informa o escopo. Os dois IDs
         são null para ASSISTENTE e ADMINISTRADOR_SISTEMA. Não há uma propriedade
         JSON separada chamada scope.
-      required: [autenticado, email, nome, provedor, email_verificado, role, tribe_id, nation_id, access_token]
+      required: [autenticado, email, nome, provedor, email_verificado, role, tribe_id, nation_id, access_token, troca_senha_obrigatoria]
       properties:
         autenticado:
           type: boolean
@@ -1471,7 +1777,14 @@ components:
         access_token:
           type: string
           nullable: true
-          description: JWT de acesso, válido por 48 horas; nulo para sessão anônima.
+          description: >-
+            JWT de acesso, válido por 48 horas; null para sessão anônima e para
+            uma sessão local autenticada com senha provisória.
+        troca_senha_obrigatoria:
+          type: boolean
+          description: >-
+            true na sessão local aberta com senha provisória até a pessoa
+            escolher uma nova senha.
     RequisicaoPapel:
       type: object
       required: [role]

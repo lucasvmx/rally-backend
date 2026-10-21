@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 @Service
 public class UsuarioAcessoService {
@@ -42,6 +43,48 @@ public class UsuarioAcessoService {
         return buscar("google_subject = ?", subject);
     }
 
+    public record ContaGerenciada(UUID id, String email, PapelUsuario role, UUID tribeId, UUID nationId,
+            TipoContaUsuario accountType, OffsetDateTime criadaEm, OffsetDateTime ultimoLoginEm) {}
+
+    public List<ContaGerenciada> listarContas() {
+        return banco.query("""
+                SELECT id, email, papel, tribo_id, nacao_id, tipo_conta, criada_em, ultimo_login_em
+                FROM usuarios_acesso ORDER BY email
+                """, (rs, linha) -> new ContaGerenciada(
+                rs.getObject("id", UUID.class), rs.getString("email"),
+                PapelUsuario.valueOf(rs.getString("papel")), rs.getObject("tribo_id", UUID.class),
+                rs.getObject("nacao_id", UUID.class), TipoContaUsuario.valueOf(rs.getString("tipo_conta")),
+                rs.getObject("criada_em", OffsetDateTime.class),
+                rs.getObject("ultimo_login_em", OffsetDateTime.class)));
+    }
+
+    public ContaGerenciada buscarContaGerenciadaPorId(UUID id) {
+        List<ContaGerenciada> contas = banco.query("""
+                SELECT id, email, papel, tribo_id, nacao_id, tipo_conta, criada_em, ultimo_login_em
+                FROM usuarios_acesso WHERE id = ?
+                """, (rs, linha) -> new ContaGerenciada(
+                rs.getObject("id", UUID.class), rs.getString("email"),
+                PapelUsuario.valueOf(rs.getString("papel")), rs.getObject("tribo_id", UUID.class),
+                rs.getObject("nacao_id", UUID.class), TipoContaUsuario.valueOf(rs.getString("tipo_conta")),
+                rs.getObject("criada_em", OffsetDateTime.class), rs.getObject("ultimo_login_em", OffsetDateTime.class)), id);
+        return contas.isEmpty() ? null : contas.getFirst();
+    }
+
+    public long versaoCredenciais(UUID usuarioId) {
+        List<Long> versoes = banco.query("SELECT versao_credenciais FROM usuarios_acesso WHERE id = ?",
+                (rs, linha) -> rs.getLong(1), usuarioId);
+        return versoes.isEmpty() ? -1L : versoes.getFirst();
+    }
+
+    public void registrarLogin(UUID usuarioId) {
+        banco.update("UPDATE usuarios_acesso SET ultimo_login_em = CURRENT_TIMESTAMP WHERE id = ?", usuarioId);
+    }
+
+    public void registrarLoginGoogle(String googleSubject) {
+        banco.update("UPDATE usuarios_acesso SET ultimo_login_em = CURRENT_TIMESTAMP WHERE google_subject = ?",
+                googleSubject);
+    }
+
     @Transactional
     public UsuarioAcesso autenticarGoogle(String emailInformado, boolean emailVerificado, String googleSubject) {
         if (!emailVerificado || emailInformado == null || emailInformado.isBlank()
@@ -51,6 +94,10 @@ public class UsuarioAcessoService {
         }
 
         String email = ContaAcessoService.normalizar(emailInformado);
+        if (identidadeGoogleRevogada(googleSubject)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Esta identidade Google não possui mais acesso ao Rally.");
+        }
         UsuarioAcesso usuarioGoogle = buscarPorGoogleSubject(googleSubject);
         if (usuarioGoogle != null) {
             if (usuarioGoogle.tipoConta() == TipoContaUsuario.LOCAL) {
@@ -61,6 +108,10 @@ public class UsuarioAcessoService {
         }
 
         UsuarioAcesso usuarioEmail = buscarPorEmail(email);
+        if (usuarioEmail == null && emailRevogado(email)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Esta conta foi excluída e não pode ser provisionada automaticamente.");
+        }
         if (usuarioEmail != null) {
             if (usuarioEmail.tipoConta() == TipoContaUsuario.LOCAL) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
@@ -104,6 +155,7 @@ public class UsuarioAcessoService {
 
     @Transactional
     public UsuarioAcesso atribuirPapel(String emailInformado, PapelUsuario papel, UUID triboId, UUID nacaoId) {
+        bloquearAdministradores();
         String email = ContaAcessoService.normalizar(emailInformado);
         validarEscopo(papel, triboId, nacaoId);
         if (isAdministradorInicial(email) && papel != PapelUsuario.ADMINISTRADOR_SISTEMA) {
@@ -111,15 +163,105 @@ public class UsuarioAcessoService {
                     "O administrador inicial configurado não pode perder o papel de administrador do sistema.");
         }
 
-        UsuarioAcesso atual = buscarPorEmail(email);
+        UsuarioAcesso atual = buscarPorEmailParaAtualizar(email);
         if (atual == null) {
             banco.update("INSERT INTO usuarios_acesso(id, email, papel, tribo_id, nacao_id) VALUES (?, ?, ?, ?, ?)",
                     UUID.randomUUID(), email, papel.name(), triboId, nacaoId);
         } else {
+            if (atual.papel() == PapelUsuario.ADMINISTRADOR_SISTEMA
+                    && papel != PapelUsuario.ADMINISTRADOR_SISTEMA) {
+                exigirOutroAdministrador(atual.id());
+            }
             banco.update("UPDATE usuarios_acesso SET papel = ?, tribo_id = ?, nacao_id = ?, atualizada_em = CURRENT_TIMESTAMP WHERE id = ?",
                     papel.name(), triboId, nacaoId, atual.id());
         }
         return buscarPorEmail(email);
+    }
+
+    @Transactional
+    public UsuarioAcesso atualizar(UUID id, PapelUsuario papel, UUID triboId, UUID nacaoId,
+            boolean administrador) {
+        bloquearAdministradores();
+        validarEscopo(papel, triboId, nacaoId);
+        UsuarioAcesso atual = buscarPorIdParaAtualizar(id);
+        if (atual == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Conta não encontrada.");
+        validarGestaoDoAlvo(atual, papel, administrador);
+        if (atual.papel() == PapelUsuario.ADMINISTRADOR_SISTEMA
+                && papel != PapelUsuario.ADMINISTRADOR_SISTEMA) {
+            exigirOutroAdministrador(atual.id());
+        }
+        banco.update("UPDATE usuarios_acesso SET papel = ?, tribo_id = ?, nacao_id = ?, atualizada_em = CURRENT_TIMESTAMP WHERE id = ?",
+                papel.name(), triboId, nacaoId, id);
+        return buscarPorId(id);
+    }
+
+    @Transactional
+    public void excluir(UUID id, UUID atorId, boolean administrador) {
+        bloquearAdministradores();
+        UsuarioAcesso alvo = buscarPorIdParaAtualizar(id);
+        if (alvo == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Conta não encontrada.");
+        if (id.equals(atorId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Não é permitido excluir a própria conta.");
+        }
+        validarGestaoDoAlvo(alvo, null, administrador);
+        if (isAdministradorInicial(alvo.email())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O administrador inicial configurado não pode ser excluído.");
+        }
+        if (alvo.papel() == PapelUsuario.ADMINISTRADOR_SISTEMA) exigirOutroAdministrador(alvo.id());
+        banco.update("""
+                INSERT INTO usuarios_acesso_revogados(email, google_subject, revogada_em)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT (email) DO UPDATE SET google_subject = COALESCE(EXCLUDED.google_subject,
+                    usuarios_acesso_revogados.google_subject), revogada_em = CURRENT_TIMESTAMP
+                """, alvo.email(), alvo.googleSubject());
+        banco.update("DELETE FROM contas_acesso WHERE email = ?", alvo.email());
+        banco.update("DELETE FROM usuarios_acesso WHERE id = ?", id);
+    }
+
+    private UsuarioAcesso buscarPorIdParaAtualizar(UUID id) {
+        List<UsuarioAcesso> encontrados = banco.query("""
+                SELECT id, email, papel, tribo_id, nacao_id, google_subject, tipo_conta
+                FROM usuarios_acesso WHERE id = ? FOR UPDATE
+                """, (rs, linha) -> mapearUsuario(rs), id);
+        return encontrados.isEmpty() ? null : encontrados.getFirst();
+    }
+
+    private UsuarioAcesso buscarPorEmailParaAtualizar(String email) {
+        List<UsuarioAcesso> encontrados = banco.query("""
+                SELECT id, email, papel, tribo_id, nacao_id, google_subject, tipo_conta
+                FROM usuarios_acesso WHERE email = ? FOR UPDATE
+                """, (rs, linha) -> mapearUsuario(rs), email);
+        return encontrados.isEmpty() ? null : encontrados.getFirst();
+    }
+
+    private void validarGestaoDoAlvo(UsuarioAcesso alvo, PapelUsuario novoPapel, boolean administrador) {
+        if (!administrador && (alvo.papel() == PapelUsuario.ADMINISTRADOR_SISTEMA
+                || novoPapel == PapelUsuario.ADMINISTRADOR_SISTEMA)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Somente administradores do sistema podem gerir contas de administrador.");
+        }
+        if (isAdministradorInicial(alvo.email()) && novoPapel != null
+                && novoPapel != PapelUsuario.ADMINISTRADOR_SISTEMA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O administrador inicial configurado deve permanecer administrador do sistema.");
+        }
+    }
+
+    private List<UUID> bloquearAdministradores() {
+        List<UUID> administradores = banco.query("""
+                SELECT id FROM usuarios_acesso WHERE papel = 'ADMINISTRADOR_SISTEMA'
+                ORDER BY id FOR UPDATE
+                """, (rs, linha) -> rs.getObject(1, UUID.class));
+        return administradores;
+    }
+
+    private void exigirOutroAdministrador(UUID administradorAlvoId) {
+        List<UUID> administradores = bloquearAdministradores();
+        if (administradores.size() <= 1 && administradores.contains(administradorAlvoId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O sistema precisa manter ao menos um administrador.");
+        }
     }
 
     @Transactional
@@ -182,6 +324,18 @@ public class UsuarioAcessoService {
         return contemEmail(assistentes, email);
     }
 
+    private boolean identidadeGoogleRevogada(String googleSubject) {
+        return Boolean.TRUE.equals(banco.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM usuarios_acesso_revogados WHERE google_subject = ?)
+                """, Boolean.class, googleSubject));
+    }
+
+    private boolean emailRevogado(String email) {
+        return Boolean.TRUE.equals(banco.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM usuarios_acesso_revogados WHERE email = ?)
+                """, Boolean.class, email));
+    }
+
     private static boolean contemEmail(String lista, String email) {
         if (email == null || email.isBlank()) return false;
         return Arrays.stream(lista.split(","))
@@ -191,14 +345,14 @@ public class UsuarioAcessoService {
 
     private UsuarioAcesso buscar(String condicao, Object valor) {
         List<UsuarioAcesso> usuarios = banco.query("SELECT id, email, papel, tribo_id, nacao_id, google_subject, tipo_conta FROM usuarios_acesso WHERE " + condicao,
-                (rs, linha) -> new UsuarioAcesso(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("email"),
-                        PapelUsuario.valueOf(rs.getString("papel")),
-                        rs.getObject("tribo_id", UUID.class),
-                        rs.getObject("nacao_id", UUID.class),
-                        rs.getString("google_subject"),
-                        TipoContaUsuario.valueOf(rs.getString("tipo_conta"))), valor);
+                (rs, linha) -> mapearUsuario(rs), valor);
         return usuarios.isEmpty() ? null : usuarios.getFirst();
+    }
+
+    private static UsuarioAcesso mapearUsuario(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new UsuarioAcesso(rs.getObject("id", UUID.class), rs.getString("email"),
+                PapelUsuario.valueOf(rs.getString("papel")), rs.getObject("tribo_id", UUID.class),
+                rs.getObject("nacao_id", UUID.class), rs.getString("google_subject"),
+                TipoContaUsuario.valueOf(rs.getString("tipo_conta")));
     }
 }

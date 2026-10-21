@@ -7,7 +7,12 @@ import org.springframework.security.core.userdetails.UserDetails;
 import java.util.Collection;
 import java.util.List;
 
-public record UsuarioLocalPrincipal(UsuarioAcesso usuario) implements UserDetails {
+public record UsuarioLocalPrincipal(UsuarioAcesso usuario, boolean trocaSenhaObrigatoria,
+        long versaoCredenciais) implements UserDetails {
+    public UsuarioLocalPrincipal(UsuarioAcesso usuario) {
+        this(usuario, false, 0L);
+    }
+
     public String email() {
         return usuario.email();
     }

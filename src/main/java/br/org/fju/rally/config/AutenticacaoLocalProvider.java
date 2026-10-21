@@ -32,7 +32,9 @@ public class AutenticacaoLocalProvider implements AuthenticationProvider {
         if (usuario == null) {
             throw new BadCredentialsException("E-mail ou senha incorretos.");
         }
-        UsuarioLocalPrincipal principal = new UsuarioLocalPrincipal(usuario);
+        contas.registrarLogin(usuario.id());
+        UsuarioLocalPrincipal principal = new UsuarioLocalPrincipal(usuario,
+                resultado.trocaSenhaObrigatoria(), resultado.versaoCredenciais());
         return UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities());
     }
 

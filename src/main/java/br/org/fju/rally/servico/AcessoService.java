@@ -70,14 +70,14 @@ public class AcessoService {
             if (usuario == null) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A conta não possui mais um papel autorizado.");
             }
-            return new ContextoAcesso(usuario.papel(), usuario.triboId(), usuario.nacaoId());
+            return new ContextoAcesso(usuario.papel(), usuario.triboId(), usuario.nacaoId(), usuario.id());
         }
         if (autenticacao instanceof OAuth2AuthenticationToken oauth && usuarios != null) {
             String email = oauth.getPrincipal().getAttribute("email");
             Boolean verificado = oauth.getPrincipal().getAttribute("email_verified");
             String subject = oauth.getPrincipal().getAttribute("sub");
             UsuarioAcesso usuario = usuarios.autenticarGoogle(email, Boolean.TRUE.equals(verificado), subject);
-            return new ContextoAcesso(usuario.papel(), usuario.triboId(), usuario.nacaoId());
+            return new ContextoAcesso(usuario.papel(), usuario.triboId(), usuario.nacaoId(), usuario.id());
         }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "A identidade autenticada não possui um papel Rally.");
     }
@@ -108,17 +108,25 @@ public class AcessoService {
 
     private ContextoAcesso contextoJwt(Jwt jwt) {
         try {
+            UUID usuarioId = UUID.fromString(jwt.getSubject());
+            if (usuarios != null) {
+                UsuarioAcesso usuario = usuarios.buscarPorId(usuarioId);
+                if (usuario == null) {
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                            "A conta não possui mais um papel autorizado.");
+                }
+                return new ContextoAcesso(usuario.papel(), usuario.triboId(), usuario.nacaoId(), usuario.id());
+            }
             PapelUsuario papel = PapelUsuario.valueOf(jwt.getClaimAsString("role"));
             UUID triboId = uuid(jwt.getClaimAsString("tribe_id"));
             UUID nacaoId = uuid(jwt.getClaimAsString("nation_id"));
-            UUID.fromString(jwt.getSubject());
             if (papel == PapelUsuario.COORDENADOR_TRIBO && (triboId == null || nacaoId != null)
                     || papel == PapelUsuario.COORDENADOR_NACAO && (nacaoId == null || triboId != null)
                     || (papel == PapelUsuario.ASSISTENTE || papel == PapelUsuario.ADMINISTRADOR_SISTEMA)
                     && (triboId != null || nacaoId != null)) {
                 throw new IllegalArgumentException("Escopo incompatível com o papel.");
             }
-            return new ContextoAcesso(papel, triboId, nacaoId);
+            return new ContextoAcesso(papel, triboId, nacaoId, usuarioId);
         } catch (RuntimeException excecao) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "O JWT não contém um papel ou escopo válido.");
         }
@@ -128,7 +136,10 @@ public class AcessoService {
         return valor == null || valor.isBlank() ? null : UUID.fromString(valor);
     }
 
-    public record ContextoAcesso(PapelUsuario papel, UUID triboId, UUID nacaoId) {
+    public record ContextoAcesso(PapelUsuario papel, UUID triboId, UUID nacaoId, UUID usuarioId) {
+        public ContextoAcesso(PapelUsuario papel, UUID triboId, UUID nacaoId) {
+            this(papel, triboId, nacaoId, null);
+        }
         public boolean assistente() {
             return papel == PapelUsuario.ASSISTENTE;
         }

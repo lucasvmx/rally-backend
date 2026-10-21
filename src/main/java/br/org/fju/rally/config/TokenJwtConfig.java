@@ -11,6 +11,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
+import br.org.fju.rally.servico.UsuarioAcessoService;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -43,15 +44,32 @@ public class TokenJwtConfig {
     @Bean
     JwtDecoder jwtDecoder(SecretKey chave,
                           @Value("${rally.autenticacao.jwt-emissor}") String emissor,
-                          @Value("${rally.autenticacao.jwt-audiencia}") String audiencia) {
+                          @Value("${rally.autenticacao.jwt-audiencia}") String audiencia,
+                          UsuarioAcessoService usuarios) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withSecretKey(chave)
                 .macAlgorithm(MacAlgorithm.HS256)
                 .build();
         OAuth2TokenValidator<Jwt> validadorAudiencia = jwt -> jwt.getAudience().contains(audiencia)
                 ? OAuth2TokenValidatorResult.success()
                 : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Audiência JWT inválida.", null));
+        OAuth2TokenValidator<Jwt> validadorVersaoCredencial = jwt -> {
+            try {
+                Object claim = jwt.getClaim("credential_version");
+                long versao = claim == null ? 0L
+                        : claim instanceof Number numero ? numero.longValue() : Long.MIN_VALUE;
+                if (versao == Long.MIN_VALUE) throw new IllegalArgumentException();
+                long versaoAtual = usuarios.versaoCredenciais(java.util.UUID.fromString(jwt.getSubject()));
+                return versaoAtual == versao
+                        ? OAuth2TokenValidatorResult.success()
+                        : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token",
+                                "Credenciais alteradas após a emissão deste token.", null));
+            } catch (RuntimeException excecao) {
+                return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token",
+                        "Token sem versão de credenciais válida.", null));
+            }
+        };
         decoder.setJwtValidator(new org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(emissor), validadorAudiencia));
+                JwtValidators.createDefaultWithIssuer(emissor), validadorAudiencia, validadorVersaoCredencial));
         return decoder;
     }
 }

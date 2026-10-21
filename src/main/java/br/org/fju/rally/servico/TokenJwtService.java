@@ -15,13 +15,15 @@ import java.util.List;
 @Service
 public class TokenJwtService {
     private final JwtEncoder encoder;
+    private final UsuarioAcessoService usuarios;
     private final String emissor;
     private final String audiencia;
 
-    public TokenJwtService(JwtEncoder encoder,
+    public TokenJwtService(JwtEncoder encoder, UsuarioAcessoService usuarios,
                            @Value("${rally.autenticacao.jwt-emissor}") String emissor,
                            @Value("${rally.autenticacao.jwt-audiencia}") String audiencia) {
         this.encoder = encoder;
+        this.usuarios = usuarios;
         this.emissor = emissor;
         this.audiencia = audiencia;
     }
@@ -38,7 +40,8 @@ public class TokenJwtService {
                 .claim("email", usuario.email())
                 .claim("email_verified", true)
                 .claim("provider", provedor)
-                .claim("role", usuario.papel().name());
+                .claim("role", usuario.papel().name())
+                .claim("credential_version", usuarios.versaoCredenciais(usuario.id()));
         if (usuario.triboId() != null) claims.claim("tribe_id", usuario.triboId().toString());
         if (usuario.nacaoId() != null) claims.claim("nation_id", usuario.nacaoId().toString());
         if (googleSubject != null && !googleSubject.isBlank()) claims.claim("google_sub", googleSubject);
