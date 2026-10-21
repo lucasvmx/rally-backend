@@ -157,10 +157,6 @@ public class FormulariosController {
         return processarEnvio(token, envio, arquivos);
     }
 
-    Map<String, Object> enviar(String token, Envio envio, List<MultipartFile> arquivos) throws IOException {
-        return processarEnvio(token, envio, arquivos);
-    }
-
     private Map<String, Object> processarEnvio(String token, Envio envio, List<MultipartFile> arquivos) throws IOException {
         Formulario form = buscar(token);
         if (form.definicao().missaoId() != null && !form.definicao().missaoId().equals(envio.relatorio().missaoId())) throw erro("Missão inválida.");
