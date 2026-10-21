@@ -2,6 +2,7 @@ package br.org.fju.rally.servico;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,10 +52,20 @@ public class UsuarioAcessoService {
 
         String email = ContaAcessoService.normalizar(emailInformado);
         UsuarioAcesso usuarioGoogle = buscarPorGoogleSubject(googleSubject);
-        if (usuarioGoogle != null) return usuarioGoogle;
+        if (usuarioGoogle != null) {
+            if (usuarioGoogle.tipoConta() == TipoContaUsuario.LOCAL) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Esta conta foi configurada para acesso com e-mail e senha.");
+            }
+            return usuarioGoogle;
+        }
 
         UsuarioAcesso usuarioEmail = buscarPorEmail(email);
         if (usuarioEmail != null) {
+            if (usuarioEmail.tipoConta() == TipoContaUsuario.LOCAL) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Esta conta foi configurada para acesso com e-mail e senha.");
+            }
             if (usuarioEmail.googleSubject() != null && !usuarioEmail.googleSubject().equals(googleSubject)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Esta conta já está vinculada a outra identidade Google.");
@@ -81,7 +92,7 @@ public class UsuarioAcessoService {
         }
 
         UUID id = UUID.randomUUID();
-        banco.update("INSERT INTO usuarios_acesso(id, email, google_subject, papel) VALUES (?, ?, ?, ?) ON CONFLICT (email) DO NOTHING",
+        banco.update("INSERT INTO usuarios_acesso(id, email, google_subject, papel, tipo_conta) VALUES (?, ?, ?, ?, 'GOOGLE') ON CONFLICT (email) DO NOTHING",
                 id, email, googleSubject, papelInicial.name());
         UsuarioAcesso usuarioCriado = buscarPorEmail(email);
         if (usuarioCriado == null || !googleSubject.equals(usuarioCriado.googleSubject())) {
@@ -107,6 +118,29 @@ public class UsuarioAcessoService {
         } else {
             banco.update("UPDATE usuarios_acesso SET papel = ?, tribo_id = ?, nacao_id = ?, atualizada_em = CURRENT_TIMESTAMP WHERE id = ?",
                     papel.name(), triboId, nacaoId, atual.id());
+        }
+        return buscarPorEmail(email);
+    }
+
+    @Transactional
+    public UsuarioAcesso criarProvisionado(String emailInformado, PapelUsuario papel, UUID triboId,
+            UUID nacaoId, TipoContaUsuario tipoConta) {
+        String email = ContaAcessoService.normalizar(emailInformado);
+        validarEscopo(papel, triboId, nacaoId);
+        if (tipoConta == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Informe o tipo de conta.");
+        if (isAdministradorInicial(email) && papel != PapelUsuario.ADMINISTRADOR_SISTEMA) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "O administrador inicial configurado deve permanecer administrador do sistema.");
+        }
+        if (buscarPorEmail(email) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Já existe uma conta cadastrada com este e-mail.");
+        }
+
+        try {
+            banco.update("INSERT INTO usuarios_acesso(id, email, papel, tribo_id, nacao_id, tipo_conta) VALUES (?, ?, ?, ?, ?, ?)",
+                    UUID.randomUUID(), email, papel.name(), triboId, nacaoId, tipoConta.name());
+        } catch (DuplicateKeyException excecao) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Já existe uma conta cadastrada com este e-mail.");
         }
         return buscarPorEmail(email);
     }
@@ -156,14 +190,15 @@ public class UsuarioAcessoService {
     }
 
     private UsuarioAcesso buscar(String condicao, Object valor) {
-        List<UsuarioAcesso> usuarios = banco.query("SELECT id, email, papel, tribo_id, nacao_id, google_subject FROM usuarios_acesso WHERE " + condicao,
+        List<UsuarioAcesso> usuarios = banco.query("SELECT id, email, papel, tribo_id, nacao_id, google_subject, tipo_conta FROM usuarios_acesso WHERE " + condicao,
                 (rs, linha) -> new UsuarioAcesso(
                         rs.getObject("id", UUID.class),
                         rs.getString("email"),
                         PapelUsuario.valueOf(rs.getString("papel")),
                         rs.getObject("tribo_id", UUID.class),
                         rs.getObject("nacao_id", UUID.class),
-                        rs.getString("google_subject")), valor);
+                        rs.getString("google_subject"),
+                        TipoContaUsuario.valueOf(rs.getString("tipo_conta"))), valor);
         return usuarios.isEmpty() ? null : usuarios.getFirst();
     }
 }

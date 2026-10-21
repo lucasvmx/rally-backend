@@ -751,6 +751,59 @@ paths:
         '403':
           description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
 
+  /api/v1/usuarios:
+    post:
+      tags: [Usuários]
+      summary: Cria uma conta de usuário com papel e escopo
+      description: >-
+        Requer ASSISTENTE ou ADMINISTRADOR_SISTEMA autenticado, por sessão da
+        aplicação ou JWT no cabeçalho HTTP Authorization com o esquema Bearer.
+        Um assistente não pode criar ADMINISTRADOR_SISTEMA; somente um
+        administrador do sistema pode atribuir esse papel. O e-mail é aparado e
+        convertido para minúsculas antes da verificação de unicidade. Para
+        COORDENADOR_TRIBO, tribe_id é obrigatório e nation_id deve ser omitido ou
+        nulo; para COORDENADOR_NACAO, nation_id é obrigatório e tribe_id deve
+        ser omitido ou nulo. O ID informado precisa existir. ASSISTENTE e
+        ADMINISTRADOR_SISTEMA não aceitam escopo de tribo ou nação.
+
+        Para account_type LOCAL, initial_password é obrigatório e deve conter
+        de 12 a 128 caracteres, com limite adicional de 72 bytes em UTF-8. A
+        senha é codificada pelo PasswordEncoder configurado antes de ser
+        armazenada. Contas LOCAL autenticam-se com e-mail e senha e não aceitam
+        login pelo Google. Para account_type GOOGLE, omita initial_password; um
+        valor não vazio é rejeitado. A identidade Google é vinculada no primeiro
+        login com e-mail verificado correspondente ao usuário provisionado.
+      security:
+        - bearerJwt: []
+        - sessaoAplicacao: []
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoCriacaoUsuario'
+      responses:
+        '201':
+          description: Conta criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaProvisionamento'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '409':
+          description: Já existe uma conta com o e-mail ou o papel conflita com a configuração do administrador inicial
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
   /api/v1/usuarios/{email}/role:
     put:
       tags: [Usuários]
@@ -1200,6 +1253,63 @@ components:
     PapelUsuario:
       type: string
       enum: [ASSISTENTE, COORDENADOR_TRIBO, COORDENADOR_NACAO, ADMINISTRADOR_SISTEMA]
+    TipoContaUsuario:
+      type: string
+      enum: [LOCAL, GOOGLE]
+    RequisicaoCriacaoUsuario:
+      type: object
+      required: [email, role, account_type]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 255
+          description: E-mail único; aparado e convertido para minúsculas antes do cadastro.
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_TRIBO; deve ser omitido ou nulo para outros papéis.
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Obrigatório para COORDENADOR_NACAO; deve ser omitido ou nulo para outros papéis.
+        account_type:
+          $ref: '#/components/schemas/TipoContaUsuario'
+        initial_password:
+          type: string
+          maxLength: 128
+          description: >-
+            Obrigatória para account_type LOCAL, com mínimo de 12 caracteres e
+            máximo de 72 bytes UTF-8. A senha é codificada com o PasswordEncoder
+            configurado antes do armazenamento. Deve ser omitida para GOOGLE;
+            um valor não vazio é rejeitado.
+    RespostaProvisionamento:
+      type: object
+      required: [id, email, role, tribe_id, nation_id, account_type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/PapelUsuario'
+        tribe_id:
+          type: string
+          format: uuid
+          nullable: true
+        nation_id:
+          type: string
+          format: uuid
+          nullable: true
+        account_type:
+          $ref: '#/components/schemas/TipoContaUsuario'
     RespostaSessao:
       type: object
       description: >-

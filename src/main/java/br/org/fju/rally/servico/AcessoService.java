@@ -52,7 +52,7 @@ public class AcessoService {
         }
         if (!verificado || usuarios == null) return null;
         UsuarioAcesso usuario = usuarios.autenticarGoogle(email, true, subject);
-        return usuario == null ? null : usuario.email();
+        return usuario == null || usuario.papel() != PapelUsuario.ASSISTENTE ? null : usuario.email();
     }
 
     public ContextoAcesso contexto(HttpServletRequest requisicao) {
