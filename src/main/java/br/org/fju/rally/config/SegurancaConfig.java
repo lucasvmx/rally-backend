@@ -48,7 +48,8 @@ public class SegurancaConfig {
             HttpSecurity http,
             AutenticacaoLocalProvider autenticacaoLocal,
             OAuth2UserService<OidcUserRequest, OidcUser> usuarioGoogle,
-            Converter<Jwt, ? extends AbstractAuthenticationToken> autenticacaoJwt
+            Converter<Jwt, ? extends AbstractAuthenticationToken> autenticacaoJwt,
+            RedirecionamentoFrontend redirecionamento
     ) throws Exception {
         CookieCsrfTokenRepository repositorioCsrf = CookieCsrfTokenRepository.withHttpOnlyFalse();
         repositorioCsrf.setCookieCustomizer(cookie -> cookie.path("/").sameSite("Lax").secure(cookieSeguro));
@@ -64,7 +65,7 @@ public class SegurancaConfig {
                         resposta.setContentType("application/json;charset=UTF-8");
                         resposta.getWriter().write("{\"mensagem\":\"Autenticação necessária.\"}");
                     } else {
-                        resposta.sendRedirect("/entrar");
+                        redirecionamento.redirecionar(resposta, "/entrar");
                     }
                 }))
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
@@ -84,12 +85,12 @@ public class SegurancaConfig {
                         .userInfoEndpoint(userInfo -> userInfo.oidcUserService(usuarioGoogle))
                         .successHandler((requisicao, resposta, autenticacao) -> {
                             if (br.org.fju.rally.api.AutenticacaoController.consumirDestinoDefinirSenha(requisicao)) {
-                                resposta.sendRedirect("/definir-senha");
+                                redirecionamento.redirecionar(resposta, "/definir-senha");
                             } else {
-                                resposta.sendRedirect("/");
+                                redirecionamento.redirecionar(resposta, "/");
                             }
                         })
-                        .failureHandler((requisicao, resposta, excecao) -> resposta.sendRedirect("/entrar?erro_google=1")))
+                        .failureHandler((requisicao, resposta, excecao) -> redirecionamento.redirecionar(resposta, "/entrar?erro_google=1")))
                 .oauth2ResourceServer(resource -> resource.jwt(jwt -> jwt.jwtAuthenticationConverter(autenticacaoJwt)));
 
         return http.build();
