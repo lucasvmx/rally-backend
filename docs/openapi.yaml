@@ -6,7 +6,7 @@ info:
     API REST do Rally das Tribos. O backend usa JSON em snake_case. Rotas privadas
     aceitam a sessão Spring Security iniciada por login local ou OAuth2 Login do
     Google e também JWT no cabeçalho HTTP Authorization: Bearer. O JWT é emitido
-    na resposta da sessão, expira em 15 minutos e contém role e, para
+    na resposta da sessão, expira em 48 horas e contém role e, para
     coordenadores, tribe_id ou nation_id como
     escopo. O fluxo Google redireciona o navegador de volta à aplicação; depois
     o cliente consulta GET /api/v1/autenticacao/sessao para receber o JWT no
@@ -110,7 +110,7 @@ paths:
         retornam 401, mas não incrementam o contador de bloqueio. Um login local
         correto zera o contador. Uma autenticação bem-sucedida também retorna no
         corpo role, os IDs de escopo aplicáveis e access_token. O JWT tem validade
-        de 15 minutos e deve ser enviado em requisições privadas no cabeçalho HTTP
+        de 48 horas e deve ser enviado em requisições privadas no cabeçalho HTTP
         Authorization com o esquema Bearer.
       security: []
       parameters:
@@ -164,7 +164,7 @@ paths:
         do navegador ou o JWT no cabeçalho Authorization: Bearer. O endpoint
         encerra a sessão Spring Security, mas não revoga um JWT já emitido; esse
         token permanece válido até expirar
-        (15 minutos após a emissão).
+        (48 horas após a emissão).
       security:
         - bearerJwt: []
         - sessaoAplicacao: []
@@ -1227,7 +1227,7 @@ components:
       description: >-
         Envie o access_token no cabeçalho HTTP Authorization: Bearer. O servidor
         valida o JWT HS256, o emissor, a audiência e a validade temporal. Tokens
-        emitidos pelo backend expiram 15 minutos após a emissão.
+        emitidos pelo backend expiram 48 horas após a emissão.
     sessaoAplicacao:
       type: apiKey
       in: cookie
@@ -1471,7 +1471,7 @@ components:
         access_token:
           type: string
           nullable: true
-          description: JWT de acesso, válido por 15 minutos; nulo para sessão anônima.
+          description: JWT de acesso, válido por 48 horas; nulo para sessão anônima.
     RequisicaoPapel:
       type: object
       required: [role]

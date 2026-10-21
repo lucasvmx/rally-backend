@@ -33,7 +33,7 @@ public class TokenJwtService {
                 .audience(List.of(audiencia))
                 .subject(usuario.id().toString())
                 .issuedAt(agora)
-                .expiresAt(agora.plus(15, ChronoUnit.MINUTES))
+                .expiresAt(agora.plus(2, ChronoUnit.DAYS))
                 .id(java.util.UUID.randomUUID().toString())
                 .claim("email", usuario.email())
                 .claim("email_verified", true)
