@@ -322,15 +322,23 @@ public class InterpretadorDeRegras {
         String valor = texto(objeto, "prazo_envio", "prazo");
         if (valor == null) return null;
         try {
-            return LocalDateTime.parse(valor);
+            return LocalDateTime.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu HH:mm:ss"));
         } catch (DateTimeParseException ignorada) {
             try {
-                return LocalDate.parse(valor).atStartOfDay();
+                return LocalDateTime.parse(valor);
             } catch (DateTimeParseException tambemIgnorada) {
                 try {
-                    return dataFim == null ? null : dataFim.atTime(LocalTime.parse(valor));
-                } catch (DateTimeParseException naoEhHorario) {
-                    return null;
+                    return LocalDate.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu")).atStartOfDay();
+                } catch (DateTimeParseException dataBrasileiraInvalida) {
+                    try {
+                        return LocalDate.parse(valor).atStartOfDay();
+                    } catch (DateTimeParseException dataIsoInvalida) {
+                        try {
+                            return dataFim == null ? null : dataFim.atTime(LocalTime.parse(valor));
+                        } catch (DateTimeParseException naoEhHorario) {
+                            return null;
+                        }
+                    }
                 }
             }
         }
@@ -431,7 +439,9 @@ public class InterpretadorDeRegras {
         return "Você interpreta recados do Rally das Tribos. Responda somente JSON válido, sem markdown, com "
                 + "a chave raiz 'regras'. Todas as chaves e valores de domínio devem estar em português brasileiro. "
                 + "Cada regra deve ter nome_missao, data_inicio, data_fim, prazo_envio, pontos_por_pessoa, "
-                + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Preserve missões separadas, "
+                + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Use o formato brasileiro "
+                + "DD/MM/AAAA para datas e DD/MM/AAAA HH:mm:ss para prazos com data e hora; use null quando não houver prazo. "
+                + "Não use o padrão ISO 8601 nem separe data e hora com 'T'. Preserve missões separadas, "
                 + "missões relâmpago e metas por nação. O escopo padrão de cada missão é TRIBO: credite os pontos de cada relatório à tribo correspondente. "
                 + "A pontuação da nação é somente a soma dos pontos de suas tribos, sem pontuação separada para a nação. "
                 + "Metas nacionais podem agregar os relatórios das tribos, mas distribua a premiação às tribos. "
@@ -443,10 +453,12 @@ public class InterpretadorDeRegras {
         return "Você transforma mensagens de Rally em missões estruturadas. Responda somente JSON válido, sem markdown, "
                 + "com a chave raiz 'rally' contendo nome, data_inicio e data_fim do Rally, 'missoes' contendo uma missão por atividade descrita, e uma chave 'ambiguidades' com "
                 + "dúvidas que exijam revisão humana. Para cada missão use exatamente os campos: nome, descricao, "
-                + "data_inicio (AAAA-MM-DD), data_fim (AAAA-MM-DD), prazo_envio (AAAA-MM-DDTHH:mm:ss ou null), "
+                + "data_inicio (DD/MM/AAAA), data_fim (DD/MM/AAAA), prazo_envio (DD/MM/AAAA HH:mm:ss ou null), "
                 + "pontos_por_pessoa, pontos_por_novo_afastado, bonificacao_a_cada_cinco_novos, meta_nacional, "
                 + "bonificacao_meta_nacional, exige_foto, tipo_pessoa ('integrante' ou 'novo_ou_afastado') e "
                 + "link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e campos_relatorio. "
+                + "Use o formato brasileiro DD/MM/AAAA em todas as datas do Rally e das missões e DD/MM/AAAA HH:mm:ss "
+                + "nos prazos com data e hora. Não use o padrão ISO 8601 nem separe data e hora com 'T'. "
                 + "O escopo padrão de toda missão é TRIBO: avalie sua pontuação separadamente para cada tribo e credite os pontos à tribo do relatório. "
                 + "Quando uma regra aceitar escopo, use TRIBO por padrão; use NACAO somente se a atividade exigir explicitamente um cálculo agregado nacional, "
                 + "e distribua pontuação nacional com distribuir_para TRIBOS quando todas as tribos da nação devem receber o bônus ou TRIBO_GERADORA quando somente as tribos "
