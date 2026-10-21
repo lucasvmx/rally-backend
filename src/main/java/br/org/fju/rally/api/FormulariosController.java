@@ -46,8 +46,12 @@ public class FormulariosController {
             if (escopo == null || escopo.isBlank()) escopo = "RELATORIO";
         }
     }
-    public record Definicao(UUID missaoId, @NotBlank @Size(max=200) String titulo,
-                           @Size(max=3000) String descricao, @NotNull @Size(max=30) List<@NotNull @Valid Campo> campos) {}
+    public record Definicao(UUID missaoId, UUID rallyId, @NotBlank @Size(max=200) String titulo,
+                           @Size(max=3000) String descricao, @NotNull @Size(max=30) List<@NotNull @Valid Campo> campos) {
+        public Definicao(UUID missaoId, String titulo, String descricao, List<Campo> campos) {
+            this(missaoId, null, titulo, descricao, campos);
+        }
+    }
     public record Formulario(UUID id, String token, boolean ativo, Definicao definicao) {}
     public record Envio(@NotNull @Valid RequisicaoRelatorio relatorio,
                         @NotNull UUID nacaoId,
@@ -56,12 +60,21 @@ public class FormulariosController {
                         @NotBlank @Size(max=200) String preenchidoPor,
                         @NotNull @Size(max=30) Map<String, String> respostas) {}
 
+    private Formulario mapearFormulario(java.sql.ResultSet rs, int linha) throws java.sql.SQLException {
+        Definicao definicao = json.readValue(rs.getString("definicao"), Definicao.class);
+        UUID rallyId = rs.getObject("rally_id", UUID.class);
+        if (!Objects.equals(definicao.rallyId(), rallyId)) {
+            definicao = new Definicao(definicao.missaoId(), rallyId, definicao.titulo(),
+                    definicao.descricao(), definicao.campos());
+        }
+        return new Formulario(rs.getObject("id", UUID.class), rs.getString("token"),
+                rs.getBoolean("ativo"), definicao);
+    }
+
     @GetMapping("/formularios")
     public List<Formulario> listar(HttpServletRequest req) {
         acesso.exigirAdministracaoFormularios(req);
-        return banco.query("SELECT * FROM formularios_publicos", (rs, n) -> new Formulario(
-            rs.getObject("id", UUID.class), rs.getString("token"), rs.getBoolean("ativo"),
-            json.readValue(rs.getString("definicao"), Definicao.class)));
+        return banco.query("SELECT * FROM formularios_publicos", this::mapearFormulario);
     }
     @Transactional
     @PostMapping("/formularios")
@@ -69,6 +82,13 @@ public class FormulariosController {
         acesso.exigirAdministracaoFormularios(req);
         var missao = definicao.missaoId() == null ? null : missoes.findById(definicao.missaoId())
                 .orElseThrow(() -> erro("Missão não encontrada."));
+        UUID rallyId = definicao.rallyId();
+        if (rallyId == null && missao != null && missao.getRally() != null) rallyId = missao.getRally().getId();
+        if (rallyId == null && missao == null) throw erro("Selecione o rally deste formulário.");
+        if (rallyId != null && banco.query("SELECT id FROM rallies WHERE id = ?",
+                (rs, n) -> rs.getObject(1, UUID.class), rallyId).isEmpty()) throw erro("Rally não encontrado.");
+        if (rallyId != null && missao != null && missao.getRally() != null
+                && !rallyId.equals(missao.getRally().getId())) throw erro("A missão não pertence ao rally selecionado.");
         Set<String> ids = new HashSet<>();
         Set<String> camposReservados = Set.of("nomes_integrantes", "nomes_novos_afastados", "preenchido_por");
         for (Campo campo : definicao.campos()) {
@@ -90,9 +110,11 @@ public class FormulariosController {
                 throw erro("Os campos do formulário precisam corresponder aos campos publicados na missão.");
         }
         byte[] segredo = new byte[32]; new SecureRandom().nextBytes(segredo);
-        Formulario form = new Formulario(UUID.randomUUID(), HexFormat.of().formatHex(segredo), true, definicao);
-        banco.update("INSERT INTO formularios_publicos(id, token, definicao, missao_id) VALUES (?, ?, ?, ?)",
-            form.id(), form.token(), json.writeValueAsString(form.definicao()), definicao.missaoId());
+        Definicao definicaoSalva = new Definicao(definicao.missaoId(), rallyId, definicao.titulo(),
+                definicao.descricao(), definicao.campos());
+        Formulario form = new Formulario(UUID.randomUUID(), HexFormat.of().formatHex(segredo), true, definicaoSalva);
+        banco.update("INSERT INTO formularios_publicos(id, token, definicao, missao_id, rally_id) VALUES (?, ?, ?, ?, ?)",
+            form.id(), form.token(), json.writeValueAsString(form.definicao()), definicao.missaoId(), rallyId);
         return form;
     }
     @PostMapping("/formularios/{id}/desativar")
@@ -103,48 +125,51 @@ public class FormulariosController {
     private Formulario buscar(String token) {
         if (!token.matches("[a-f0-9]{64}")) throw inexistente();
         List<Formulario> lista = banco.query("SELECT * FROM formularios_publicos WHERE token = ? AND ativo = TRUE",
-            (rs, n) -> new Formulario(rs.getObject("id", UUID.class), token, true,
-                json.readValue(rs.getString("definicao"), Definicao.class)), token);
+            this::mapearFormulario, token);
         if (lista.isEmpty()) throw inexistente();
         return lista.getFirst();
     }
     @GetMapping("/publico/formularios/{token}")
     public Map<String, Object> publico(@PathVariable String token) {
         Formulario form = buscar(token);
-        var missoesDoFormulario = form.definicao().missaoId() == null
-                ? missoes.buscarTodasComRally().stream().map(RespostaMissao::de).toList()
-                : missoes.buscarPorIdComRally(form.definicao().missaoId()).stream().map(RespostaMissao::de).toList();
+        var missoesDoFormulario = missoes.buscarTodasComRally().stream()
+                .filter(missao -> form.definicao().missaoId() == null || form.definicao().missaoId().equals(missao.getId()))
+                .filter(missao -> form.definicao().rallyId() == null || missao.getRally() != null
+                        && missao.getRally().getId().equals(form.definicao().rallyId()))
+                .map(RespostaMissaoPublica::de)
+                .toList();
         boolean exigeFoto = form.definicao().missaoId() == null || missoes.findById(form.definicao().missaoId())
                 .map(br.org.fju.rally.dominio.Missao::isExigeFoto).orElse(true);
+        var tribosAtivas = tribos.buscarTodasComNacao().stream().filter(Tribo::isAtiva).toList();
+        Set<UUID> nacoesComTriboAtiva = tribosAtivas.stream().map(tribo -> tribo.getNacao().getId())
+                .collect(java.util.stream.Collectors.toSet());
         return Map.of("definicao", form.definicao(),
-            "nacoes", nacoes.findAll().stream().map(RespostaNacao::de).toList(),
-            "tribos", tribos.buscarTodasComNacao().stream().filter(Tribo::isAtiva).map(RespostaTribo::de).toList(),
+            "nacoes", nacoes.findAll().stream().filter(nacao -> nacoesComTriboAtiva.contains(nacao.getId()))
+                    .map(RespostaNacao::de).toList(),
+            "tribos", tribosAtivas.stream().map(RespostaTribo::de).toList(),
             "missoes", missoesDoFormulario,
             "exige_foto", exigeFoto);
     }
     @PostMapping(value="/publico/formularios/{token}/respostas", consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
     @Transactional
     public Map<String, Object> enviar(@PathVariable String token, @Valid @RequestPart("dados") Envio envio,
-                                   @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos,
-                                   HttpServletRequest requisicao) throws IOException {
-        var coordenador = acesso.exigirCoordenador(requisicao);
-        return enviarAutorizado(token, envio, arquivos, coordenador);
+                                   @RequestPart(value="arquivo", required=false) List<MultipartFile> arquivos) throws IOException {
+        return processarEnvio(token, envio, arquivos);
     }
 
-    // O handler REST sempre valida o contexto de coordenador antes de chamar o processamento interno.
     Map<String, Object> enviar(String token, Envio envio, List<MultipartFile> arquivos) throws IOException {
-        return enviarAutorizado(token, envio, arquivos, null);
+        return processarEnvio(token, envio, arquivos);
     }
 
-    private Map<String, Object> enviarAutorizado(String token, Envio envio, List<MultipartFile> arquivos,
-                                                AcessoService.ContextoAcesso coordenador) throws IOException {
+    private Map<String, Object> processarEnvio(String token, Envio envio, List<MultipartFile> arquivos) throws IOException {
         Formulario form = buscar(token);
         if (form.definicao().missaoId() != null && !form.definicao().missaoId().equals(envio.relatorio().missaoId())) throw erro("Missão inválida.");
         var missao = missoes.findById(envio.relatorio().missaoId()).orElseThrow(() -> erro("Missão inválida."));
         var tribo = tribos.findById(envio.relatorio().triboId()).orElseThrow(() -> erro("Tribo inválida."));
+        if (form.definicao().rallyId() != null && (missao.getRally() == null
+                || !form.definicao().rallyId().equals(missao.getRally().getId()))) throw erro("Missão inválida para este link.");
+        if (!tribo.isAtiva()) throw erro("A tribo selecionada está inativa.");
         if (!tribo.getNacao().getId().equals(envio.nacaoId())) throw erro("A tribo selecionada não pertence à nação informada.");
-        if (coordenador != null && !coordenador.podeAcessarTribo(tribo.getId(), tribo.getNacao().getId()))
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "O coordenador só pode enviar relatório para sua tribo ou nação.");
         List<PessoaRelatorio> pessoas = envio.relatorio().pessoas() == null || envio.relatorio().pessoas().isEmpty()
                 ? null : envio.relatorio().pessoas();
         if (pessoas == null) {
@@ -161,7 +186,9 @@ public class FormulariosController {
         Set<String> permitidosRelatorio = new HashSet<>();
         Set<String> permitidosPessoa = new HashSet<>();
         Map<String, Campo> camposFormulario = new HashMap<>();
-        for (Campo campo : form.definicao().campos()) {
+        List<Campo> camposDoFormulario = form.definicao().rallyId() == null
+                ? form.definicao().campos() : camposDaMissao(missao);
+        for (Campo campo : camposDoFormulario) {
             camposFormulario.put(campo.id(), campo);
             ("PESSOA".equals(campo.escopo()) ? permitidosPessoa : permitidosRelatorio).add(campo.id());
             if ("RELATORIO".equals(campo.escopo())) validarValor(campo, envio.respostas().get(campo.id()));
@@ -172,7 +199,7 @@ public class FormulariosController {
                         + Objects.toString(campo.getOrDefault("escopo", "RELATORIO"), "RELATORIO")
                         .toUpperCase(Locale.ROOT)));
         Map<String, String> camposRecebidos = new HashMap<>();
-        form.definicao().campos().forEach(campo -> camposRecebidos.put(
+        camposDoFormulario.forEach(campo -> camposRecebidos.put(
                 campo.id(), campo.tipo() + ":" + campo.escopo()));
         if (!camposEsperados.equals(camposRecebidos)) throw erro("O formulário não corresponde aos campos desta missão.");
         if (!permitidosRelatorio.containsAll(envio.respostas().keySet())) throw erro("Pergunta desconhecida ou fora do escopo do relatório.");
@@ -235,6 +262,19 @@ public class FormulariosController {
                 && new String(bytes, 8, 4, java.nio.charset.StandardCharsets.US_ASCII).equals("WEBP");
             default -> false;
         };
+    }
+    private static List<Campo> camposDaMissao(br.org.fju.rally.dominio.Missao missao) {
+        if (missao.getCamposRelatorio() == null) return List.of();
+        return missao.getCamposRelatorio().stream().map(campo -> {
+            Object opcoes = campo.get("opcoes");
+            List<String> opcoesTexto = opcoes instanceof List<?> lista
+                    ? lista.stream().map(Objects::toString).toList() : List.of();
+            return new Campo(Objects.toString(campo.get("id"), ""),
+                    Objects.toString(campo.get("titulo"), ""), Objects.toString(campo.get("tipo"), ""),
+                    Boolean.TRUE.equals(campo.get("obrigatorio")), opcoesTexto,
+                    Objects.toString(campo.getOrDefault("escopo", "RELATORIO"), "RELATORIO")
+                            .toUpperCase(Locale.ROOT));
+        }).toList();
     }
     private static int quantidadeNomes(String nomes) {
         int quantidade = (int) Arrays.stream(nomes.split("\\R"))

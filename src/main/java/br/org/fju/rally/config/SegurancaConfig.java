@@ -77,8 +77,7 @@ public class SegurancaConfig {
                                 "/api/v1/autenticacao/senha/google").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/autenticacao/login").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/publico/formularios/*").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/publico/formularios/*/respostas")
-                        .hasAnyRole("COORDENADOR_TRIBO", "COORDENADOR_NACAO")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/publico/formularios/*/respostas").permitAll()
                         .requestMatchers("/api/v1/saude", "/oauth2/**", "/login/**").permitAll()
                         .anyRequest().hasAnyRole("ASSISTENTE", "COORDENADOR_TRIBO", "COORDENADOR_NACAO", "ADMINISTRADOR_SISTEMA"))
                 .oauth2Login(login -> login

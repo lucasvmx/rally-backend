@@ -993,13 +993,14 @@ paths:
       summary: Cria um formulário público para receber relatórios do período
       description: >-
         ASSISTENTE ou ADMINISTRADOR_SISTEMA pode criar a definição com até 30
-        campos, incluindo uma lista vazia. missao_id é opcional; quando
-        informado, deve identificar uma missão existente. Formulários ligados
-        a missão são limitados a essa missão no envio público. Se a missão tiver
-        campos_relatorio, IDs, tipos e escopos dos campos do formulário devem
-        corresponder. IDs devem ser únicos e não podem ser nomes_integrantes,
-        nomes_novos_afastados ou preenchido_por. Campo do tipo selecao precisa
-        conter pelo menos uma opção.
+        campos. rally_id é obrigatório quando missao_id não é informado; se
+        ambos forem enviados, a missão precisa pertencer ao rally. O link
+        permite consultar catálogos e
+        enviar relatórios apenas para missões cadastradas nesse rally. missao_id
+        é opcional para compatibilidade com formulários vinculados a uma única
+        missão. IDs dos campos definidos no formulário devem ser únicos e não
+        podem ser nomes_integrantes, nomes_novos_afastados ou preenchido_por.
+        Campo do tipo selecao precisa conter pelo menos uma opção.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -1009,6 +1010,7 @@ paths:
             schema:
               $ref: '#/components/schemas/DefinicaoFormulario'
             example:
+              rally_id: 00000000-0000-4000-8000-000000000010
               titulo: Relatório mensal
               descricao: Relatórios das missões realizadas neste mês.
               campos: []
@@ -1055,11 +1057,10 @@ paths:
       responses:
         '200':
           description: >-
-            Definição do formulário, nações, tribos e missões disponíveis.
-            Se o formulário estiver vinculado a uma missão, exige_foto
-            corresponde à configuração dessa missão e missoes contém apenas
-            ela. Sem vínculo, missoes lista as missões e exige_foto retorna
-            true.
+            Definição do formulário, nações com tribos ativas, tribos ativas e
+            missões do rally associado. Cada missão contém apenas os dados
+            necessários para o envio: id, nome, exigência de foto e campos do
+            relatório. Formulários antigos sem rally_id mantêm o escopo legado.
           content:
             application/json:
               schema:
@@ -1070,14 +1071,13 @@ paths:
   /api/v1/publico/formularios/{token}/respostas:
     post:
       tags: [Formulários públicos]
-      summary: Envia respostas de formulário como coordenador autenticado
+      summary: Envia um relatório usando a chave pública do link
       description: >-
-        Embora a definição do formulário possa ser consultada publicamente, o
-        envio exige uma identidade autenticada com role COORDENADOR_TRIBO ou
-        COORDENADOR_NACAO. O coordenador só pode enviar para uma tribo dentro
-        do escopo de tribo ou nação associado à identidade. A role e o escopo
-        são lidos da sessão Spring Security ou do JWT Authorization: Bearer;
-        cabeçalhos definidos pelo cliente não controlam a autorização.
+        Qualquer pessoa com a chave de 256 bits no caminho da URL pode enviar;
+        login não é exigido. A chave autoriza somente o envio para missões do
+        rally associado e não permite consultar relatórios ou respostas. O
+        servidor valida a associação da missão ao rally, se a tribo está ativa
+        e se ela pertence à nação informada. A proteção CSRF continua habilitada.
         A parte dados é JSON e deve incluir relatorio, nacao_id, preenchido_por
         e respostas adicionais. relatorio.missao_id é escolhido neste envio.
         Se a definição do formulário tiver missao_id, ele precisa corresponder
@@ -1106,9 +1106,7 @@ paths:
         identificar uma missão existente. O conteúdo da foto também precisa
         corresponder ao MIME type declarado. O arquivo deve ser JPEG, PNG ou
         WebP; o nome e a extensão do arquivo não determinam o formato aceito.
-      security:
-        - bearerJwt: []
-        - sessaoAplicacao: []
+      security: []
       parameters:
         - $ref: '#/components/parameters/TokenFormulario'
         - $ref: '#/components/parameters/CabecalhoCsrf'
@@ -1144,12 +1142,14 @@ paths:
                 $ref: '#/components/schemas/RespostaEnvioFormulario'
         '400':
           $ref: '#/components/responses/ErroRequisicao'
-        '401':
-          $ref: '#/components/responses/NaoAutenticado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
         '403':
-          $ref: '#/components/responses/AcessoNegado'
+          description: Token CSRF ausente ou inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/formularios/respostas/{id}:
     get:
@@ -1244,10 +1244,10 @@ components:
       description: >-
         Token obtido do cookie XSRF-TOKEN após consultar GET
         /api/v1/autenticacao/csrf. A proteção CSRF também se aplica ao envio de
-        formulário sob /api/v1/publico/formularios; esse envio requer coordenador
-        autenticado. Envie o
-        cabeçalho e o cookie XSRF-TOKEN em métodos de escrita; o cookie de sessão
-        também acompanha as requisições quando houver sessão autenticada.
+        formulário sob /api/v1/publico/formularios, mesmo quando a pessoa não
+        está autenticada. Envie o cabeçalho e o cookie XSRF-TOKEN em métodos de
+        escrita; o cookie de sessão também acompanha as requisições quando
+        houver sessão autenticada.
       schema:
         type: string
     EmailUsuario:
@@ -1301,7 +1301,7 @@ components:
       name: token
       in: path
       required: true
-      description: Token hexadecimal de 64 caracteres do formulário público.
+      description: Chave pública hexadecimal de 64 caracteres incluída no link compartilhado.
       schema:
         type: string
         pattern: '^[a-f0-9]{64}$'
@@ -2449,6 +2449,14 @@ components:
       type: object
       required: [titulo, campos]
       properties:
+        rally_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Rally associado ao link. Obrigatório em formulários sem missao_id;
+            para missões vinculadas, o backend obtém o rally da missão. Se
+            missao_id e rally_id forem enviados, precisam pertencer ao mesmo rally.
         missao_id:
           type: string
           format: uuid
@@ -2474,7 +2482,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/DefinicaoFormulario'
         - type: object
-          required: [missao_id]
+          required: [missao_id, rally_id]
           properties:
             missao_id:
               type: string
@@ -2483,6 +2491,13 @@ components:
               readOnly: true
               description: >-
                 Campo somente de leitura. Contém a missão associada ou null.
+            rally_id:
+              type: string
+              format: uuid
+              nullable: true
+              readOnly: true
+              description: >-
+                Rally associado ao link ou null em formulários antigos sem escopo.
     Formulario:
       type: object
       required: [id, token, ativo, definicao]
@@ -2593,12 +2608,28 @@ components:
         missoes:
           type: array
           items:
-            $ref: '#/components/schemas/RespostaMissao'
+            $ref: '#/components/schemas/RespostaMissaoPublica'
         exige_foto:
           type: boolean
           description: >-
-            Reflete a configuração da missão associada; sem missão associada,
-            o endpoint retorna true.
+            Para compatibilidade, indica exigência de foto da missão vinculada;
+            se não houver missão fixa, retorna true. Use missoes[].exige_foto
+            quando o link permite escolher a missão.
+    RespostaMissaoPublica:
+      type: object
+      required: [id, nome, exige_foto, campos_relatorio]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        exige_foto:
+          type: boolean
+        campos_relatorio:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampoFormulario'
     RespostaEnvioFormulario:
       type: object
       required: [id, avisos]
