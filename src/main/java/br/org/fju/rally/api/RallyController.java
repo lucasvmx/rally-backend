@@ -6,6 +6,7 @@ import br.org.fju.rally.repositorio.TriboRepositorio;
 import br.org.fju.rally.repositorio.RallyRepositorio;
 import br.org.fju.rally.servico.MissaoService;
 import br.org.fju.rally.servico.GoogleDriveService;
+import br.org.fju.rally.servico.EnvioFormularioService;
 import br.org.fju.rally.servico.PontuacaoService;
 import br.org.fju.rally.servico.PontuacaoManualService;
 import br.org.fju.rally.servico.RelatorioService;
@@ -28,8 +29,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Arrays;
+import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.util.UUID;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -44,6 +50,7 @@ public class RallyController {
     private final PontuacaoService pontuacaoService;
     private final MissaoService missaoService;
     private final GoogleDriveService googleDriveService;
+    private final EnvioFormularioService envioFormularioService;
     private final RallyRepositorio rallyRepositorio;
     private final TriboService triboService;
     private final PontuacaoManualService pontuacaoManualService;
@@ -52,7 +59,8 @@ public class RallyController {
                            MissaoRepositorio missaoRepositorio, RelatorioService relatorioService,
                            PontuacaoService pontuacaoService, MissaoService missaoService,
                            GoogleDriveService googleDriveService, RallyRepositorio rallyRepositorio,
-                           TriboService triboService, PontuacaoManualService pontuacaoManualService) {
+                           TriboService triboService, PontuacaoManualService pontuacaoManualService,
+                           EnvioFormularioService envioFormularioService) {
         this.nacaoRepositorio = nacaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.missaoRepositorio = missaoRepositorio;
@@ -60,6 +68,7 @@ public class RallyController {
         this.pontuacaoService = pontuacaoService;
         this.missaoService = missaoService;
         this.googleDriveService = googleDriveService;
+        this.envioFormularioService = envioFormularioService;
         this.rallyRepositorio = rallyRepositorio;
         this.triboService = triboService;
         this.pontuacaoManualService = pontuacaoManualService;
@@ -161,6 +170,23 @@ public class RallyController {
         return relatorioService.criar(corpo, requisicao);
     }
 
+    @PostMapping(value = "/relatorios/com-foto", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public RespostaRelatorio criarRelatorioComFoto(@Valid @RequestPart("dados") RequisicaoRelatorio corpo,
+            @RequestPart("arquivo") MultipartFile arquivo, HttpServletRequest requisicao) throws IOException {
+        String tipo = arquivo == null ? "" : arquivo.getContentType();
+        if (arquivo == null || arquivo.isEmpty() || arquivo.getSize() > 5 * 1024 * 1024
+                || !Set.of("image/jpeg", "image/png", "image/webp").contains(tipo)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Envie uma foto JPEG, PNG ou WebP de até 5 MB.");
+        }
+        byte[] conteudo = arquivo.getBytes();
+        if (!assinaturaFotoValida(conteudo, tipo)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "O arquivo não corresponde ao formato de foto informado.");
+        }
+        return envioFormularioService.salvarRelatorioComFoto(corpo, requisicao, conteudo, tipo);
+    }
+
     @PostMapping("/relatorios/{id}/aprovar")
     public RespostaRelatorio aprovar(@PathVariable UUID id, @RequestBody(required = false) RequisicaoRevisao corpo,
                                      HttpServletRequest requisicao) {
@@ -173,10 +199,28 @@ public class RallyController {
         return relatorioService.rejeitar(id, corpo == null ? null : corpo.justificativa(), requisicao);
     }
 
+    @org.springframework.web.bind.annotation.PutMapping("/relatorios/{id}/pessoas")
+    public RespostaRelatorio ajustarPessoas(@PathVariable UUID id,
+            @Valid @RequestBody RequisicaoAjusteRelatorio corpo, HttpServletRequest requisicao) {
+        return relatorioService.ajustarPessoas(id, corpo.pessoas(), requisicao);
+    }
+
     @PostMapping(value = "/relatorios/{id}/arquivos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public String enviarArquivo(@PathVariable UUID id, @RequestPart("arquivo") MultipartFile arquivo,
                                 HttpServletRequest requisicao, Authentication autenticacao) {
         return googleDriveService.enviar(id, arquivo, requisicao, autenticacao).getIdentificadorDrive();
+    }
+
+    private static boolean assinaturaFotoValida(byte[] bytes, String tipo) {
+        if (bytes.length < 12) return false;
+        return switch (tipo) {
+            case "image/jpeg" -> bytes[0] == (byte) 0xff && bytes[1] == (byte) 0xd8 && bytes[2] == (byte) 0xff;
+            case "image/png" -> Arrays.equals(Arrays.copyOf(bytes, 8),
+                    new byte[] {(byte) 137, 80, 78, 71, 13, 10, 26, 10});
+            case "image/webp" -> new String(bytes, 0, 4, StandardCharsets.US_ASCII).equals("RIFF")
+                    && new String(bytes, 8, 4, StandardCharsets.US_ASCII).equals("WEBP");
+            default -> false;
+        };
     }
 
     @GetMapping("/placar")

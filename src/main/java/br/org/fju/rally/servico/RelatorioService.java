@@ -76,21 +76,23 @@ public class RelatorioService {
         List<Map<String, Object>> campos = relatorio.getMissao().getCamposRelatorio() == null
                 ? List.of() : relatorio.getMissao().getCamposRelatorio();
         Map<String, Object> dadosRelatorio = somenteCampos(campos, "RELATORIO", relatorio.getDados());
-        boolean possuiCamposPessoa = campos.stream().anyMatch(campo ->
-                "PESSOA".equalsIgnoreCase(Objects.toString(campo.get("escopo"), "RELATORIO")));
-        List<RespostaDadosMissaoRelatorio.Pessoa> pessoas = possuiCamposPessoa
-                ? pessoaRepositorio.findByRelatorioId(id).stream()
-                        .map(pessoa -> new RespostaDadosMissaoRelatorio.Pessoa(
-                                pessoa.getNome(), pessoa.getCategoria(),
-                                somenteCampos(campos, "PESSOA", pessoa.getDados())))
-                        .toList()
-                : List.of();
+        List<RespostaDadosMissaoRelatorio.Pessoa> pessoas = pessoaRepositorio.findByRelatorioId(id).stream()
+                .map(pessoa -> new RespostaDadosMissaoRelatorio.Pessoa(
+                        pessoa.getNome(), pessoa.getCategoria(),
+                        somenteCampos(campos, "PESSOA", pessoa.getDados())))
+                .toList();
 
         return new RespostaDadosMissaoRelatorio(dadosRelatorio, pessoas);
     }
 
     @Transactional
     public RespostaRelatorio criar(RequisicaoRelatorio corpo, HttpServletRequest requisicao) {
+        return criar(corpo, false, requisicao);
+    }
+
+    @Transactional
+    public RespostaRelatorio criar(RequisicaoRelatorio corpo, boolean fotoValidadaNoEnvio,
+                                   HttpServletRequest requisicao) {
         AcessoService.ContextoAcesso acesso = acessoService.exigirCoordenador(requisicao);
         Tribo tribo = triboRepositorio.findById(corpo.triboId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
@@ -98,7 +100,7 @@ public class RelatorioService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "O coordenador só pode enviar relatório para sua tribo ou nação.");
         }
-        return criarPublico(corpo, false);
+        return criarPublico(corpo, fotoValidadaNoEnvio);
     }
 
     @Transactional
@@ -116,7 +118,7 @@ public class RelatorioService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Esta tribo está inativa e não pode enviar relatórios.");
         }
         if (missao.isExigeFoto() && !fotoValidadaNoEnvio) {
-            throw erro("Esta missão exige foto; envie o relatório pelo formulário com a foto incluída.");
+            throw erro("Esta missão exige que a foto seja enviada junto com o relatório.");
         }
 
         List<PessoaRelatorio> pessoasDeclaradas = corpo.pessoas() == null ? List.of() : corpo.pessoas();
@@ -124,7 +126,7 @@ public class RelatorioService {
         Map<String, Object> dados = validarDados(corpo.dados());
         UUID relatorioId = UUID.randomUUID();
         List<Map<String, Object>> avisos = new ArrayList<>();
-        List<PessoaRascunho> rascunhos = resolverPessoas(missao, pessoasDeclaradas, avisos);
+        List<PessoaRascunho> rascunhos = resolverPessoas(missao, pessoasDeclaradas, avisos, null);
         validarCamposDaMissao(missao, dados, rascunhos);
 
         int integrantesAceitos = (int) rascunhos.stream()
@@ -164,8 +166,39 @@ public class RelatorioService {
         return RespostaRelatorio.de(relatorioRepositorio.save(relatorio));
     }
 
+    @Transactional
+    public RespostaRelatorio ajustarPessoas(UUID id, List<PessoaRelatorio> pessoas,
+                                            HttpServletRequest requisicao) {
+        acessoService.exigirAssistente(requisicao);
+        Relatorio relatorio = buscar(id);
+        exigirEnviado(relatorio);
+        List<PessoaRelatorio> declaradas = pessoas == null ? List.of() : pessoas;
+        if (declaradas.size() > 400) throw erro("Informe no máximo 400 pessoas por relatório.");
+
+        List<Map<String, Object>> avisos = new ArrayList<>();
+        List<PessoaRascunho> rascunhos = resolverPessoas(relatorio.getMissao(), declaradas, avisos, id);
+        validarCamposDaMissao(relatorio.getMissao(), relatorio.getDados(), rascunhos);
+
+        int integrantes = (int) rascunhos.stream()
+                .filter(pessoa -> !categoriaNovo(pessoa.categoria())).count();
+        int novos = (int) rascunhos.stream()
+                .filter(pessoa -> categoriaNovo(pessoa.categoria())).count();
+        if (integrantes > 200 || novos > 200) {
+            throw erro("O relatório aceita até 200 integrantes/convidados e 200 novos/afastados.");
+        }
+        pessoaRepositorio.deleteAll(pessoaRepositorio.findByRelatorioId(id));
+        pessoaRepositorio.flush();
+        List<PessoaPontuada> pessoasAtualizadas = rascunhos.stream().map(pessoa -> new PessoaPontuada(
+                UUID.randomUUID(), relatorio.getMissao(), relatorio, pessoa.nome(), pessoa.nomeNormalizado(),
+                pessoa.ocorrencia(), pessoa.categoria(), pessoa.dados())).toList();
+        if (!pessoasAtualizadas.isEmpty()) pessoaRepositorio.saveAllAndFlush(pessoasAtualizadas);
+
+        relatorio.ajustarPessoas(integrantes, novos, avisos);
+        return RespostaRelatorio.de(relatorioRepositorio.save(relatorio));
+    }
+
     private List<PessoaRascunho> resolverPessoas(Missao missao, List<PessoaRelatorio> declaradas,
-                                                  List<Map<String, Object>> avisos) {
+                                                  List<Map<String, Object>> avisos, UUID relatorioAtual) {
         Map<String, List<PessoaRelatorio>> porNome = new LinkedHashMap<>();
         for (PessoaRelatorio declarada : declaradas) {
             String nome = nomeValido(declarada.nome());
@@ -182,7 +215,10 @@ public class RelatorioService {
         List<PessoaRascunho> resultado = new ArrayList<>();
         for (Map.Entry<String, List<PessoaRelatorio>> grupo : porNome.entrySet()) {
             List<PessoaPontuada> existentes = pessoaRepositorio.findByMissaoIdAndNomeNormalizado(
-                    missao.getId(), grupo.getKey());
+                    missao.getId(), grupo.getKey()).stream()
+                    .filter(pessoa -> relatorioAtual == null
+                            || !pessoa.getRelatorio().getId().equals(relatorioAtual))
+                    .toList();
             int proximaOcorrencia = existentes.stream().mapToInt(PessoaPontuada::getOcorrencia).max().orElse(0) + 1;
             if (grupo.getValue().size() > 1 || !existentes.isEmpty()) {
                 avisos.add(aviso("NOME_REPETIDO_NA_MISSAO",

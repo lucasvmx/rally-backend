@@ -757,13 +757,16 @@ paths:
         normaliza espaços repetidos e nas extremidades, mas preserva acentos.
         Um nome repetido após essa normalização é tratado como pessoa distinta
         e gera um aviso. Como a identificação usa somente o nome, o serviço não
-        consegue distinguir homônimos de um reenvio da mesma pessoa. Relatórios
-        não possuem operação de edição: após o envio,
-        os dados não podem ser ajustados. Para missão que exige foto, use o
-        formulário multipart; esta rota JSON não recebe foto. A resposta de
-        relatório não inclui nomes de pessoas; os nomes enviados por formulário
-        ficam disponíveis apenas nas rotas protegidas de respostas de formulário
-        para ASSISTENTE e ADMINISTRADOR_SISTEMA.
+        consegue distinguir homônimos de um reenvio da mesma pessoa. Uma
+        pessoa com role ASSISTENTE ou ADMINISTRADOR_SISTEMA pode ajustar as
+        pessoas e quantidades de um relatório ainda
+        ENVIADO por PUT /api/v1/relatorios/{id}/pessoas. Para missão que exige
+        foto, use o formulário multipart ou POST /api/v1/relatorios/com-foto;
+        esta rota JSON não recebe foto. A resposta de
+        relatório não inclui nomes de pessoas; a role ASSISTENTE ou
+        ADMINISTRADOR_SISTEMA pode consultar os dados dinâmicos e as pessoas
+        em /api/v1/relatorios/{id}/dados-missao e as respostas associadas em
+        /api/v1/formularios/respostas/{id}.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -787,6 +790,125 @@ paths:
           $ref: '#/components/responses/AcessoNegado'
         '404':
           $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/relatorios/com-foto:
+    post:
+      tags: [Relatórios]
+      summary: Envia um relatório autenticado com foto
+      description: >-
+        Exige role COORDENADOR_TRIBO ou COORDENADOR_NACAO no contexto
+        autenticado e permite criar relatório somente para tribo dentro do
+        escopo de tribe_id ou nation_id da identidade. A parte dados é um
+        objeto RequisicaoRelatorio serializado como application/json; arquivo
+        é uma imagem obrigatória JPEG, PNG ou WebP de até 5 MiB (5.242.880
+        bytes), cujo conteúdo deve corresponder ao tipo informado. A imagem é
+        enviada ao serviço de detecção antes da gravação. O relatório criado
+        continua sendo retornado como RespostaRelatorio; a contagem e a
+        disponibilidade das imagens ficam disponíveis em
+        GET /api/v1/formularios/respostas/{id}, e as imagens são obtidas nas
+        rotas /foto e /foto-anotada desse recurso. O backend valida os campos,
+        pessoas e categorias da missão como no envio JSON.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [dados, arquivo]
+              properties:
+                dados:
+                  $ref: '#/components/schemas/RequisicaoRelatorio'
+                arquivo:
+                  type: string
+                  format: binary
+                  description: >-
+                    Imagem JPEG, PNG ou WebP de até 5 MiB. O conteúdo precisa
+                    corresponder ao MIME type declarado.
+            encoding:
+              dados:
+                contentType: application/json
+              arquivo:
+                contentType: image/jpeg, image/png, image/webp
+      responses:
+        '200':
+          description: Relatório criado e foto processada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '413':
+          description: O serviço de detecção rejeitou a resolução da imagem
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '502':
+          description: O serviço de detecção retornou resposta ou imagem inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '503':
+          description: O serviço de detecção está indisponível ou não respondeu a tempo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/relatorios/{id}/pessoas:
+    put:
+      tags: [Relatórios]
+      summary: Ajusta as pessoas de um relatório enviado
+      description: >-
+        Exige role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Só aceita relatórios
+        ainda no estado ENVIADO. Substitui a lista de pessoas e recalcula as
+        quantidades quantidade_pessoas e quantidade_novos_afastados a partir
+        das categorias fornecidas; o relatório atualizado é retornado e pode
+        então ser aprovado para calcular a pontuação com a contagem corrigida.
+        A lista pode conter até 400 pessoas, sujeita aos limites de 200 pessoas
+        por grupo de categoria usados pelo relatório e às regras de campos e
+        categorias definidas pela missão. Nomes repetidos continuam distintos
+        e são indicados em avisos.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoAjusteRelatorio'
+      responses:
+        '200':
+          description: Relatório atualizado com quantidades derivadas das pessoas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaRelatorio'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O relatório já foi revisado e não pode ser ajustado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
 
   /api/v1/relatorios/{id}/dados-missao:
     get:
@@ -1448,7 +1570,21 @@ paths:
         '404':
           $ref: '#/components/responses/NaoEncontrado'
         '403':
-          description: Token CSRF ausente ou inválido
+          description: Token CSRF ausente ou inválido; o filtro pode responder sem corpo
+        '413':
+          description: O serviço de detecção rejeitou a resolução da imagem
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '502':
+          description: O serviço de detecção retornou resposta ou imagem inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '503':
+          description: O serviço de detecção está indisponível ou não respondeu a tempo
           content:
             application/json:
               schema:
@@ -1462,17 +1598,19 @@ paths:
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
         O mapa respostas contém os valores fixos
         nomes_integrantes, nomes_novos_afastados e preenchido_por, além das
-        respostas adicionais. Registros antigos podem continuar trazendo
-        missao_id na definição. O acesso aos nomes,
-        às respostas e à presença de foto fica restrito às roles ASSISTENTE e
-        ADMINISTRADOR_SISTEMA.
+        respostas adicionais. Cada item inclui tem_foto, tem_foto_anotada e
+        contagem_rostos; use as rotas foto e foto-anotada para obter as imagens.
+        Registros antigos podem continuar trazendo missao_id na definição. O
+        acesso aos nomes, às respostas e à presença de foto fica restrito às
+        roles ASSISTENTE e ADMINISTRADOR_SISTEMA.
       parameters:
         - $ref: '#/components/parameters/RelatorioId'
       responses:
         '200':
           description: >-
-            Respostas associadas ao relatório. Se não houver resposta de
-            formulário para o identificador, retorna uma lista vazia.
+            Respostas associadas ao relatório, com a presença da imagem original,
+            da imagem anotada e a quantidade de rostos detectados. Se não houver
+            resposta de formulário para o identificador, retorna uma lista vazia.
           content:
             application/json:
               schema:
@@ -1496,6 +1634,45 @@ paths:
       responses:
         '200':
           description: Bytes da imagem armazenada
+          headers:
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: nosniff
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/formularios/respostas/{id}/foto-anotada:
+    get:
+      tags: [Formulários]
+      summary: Obtém a foto com os contornos de rostos detectados
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA no contexto de acesso.
+        Retorna a imagem anotada armazenada para a resposta do relatório; o
+        tipo de conteúdo corresponde ao da foto original. Se não houver imagem
+        anotada para o relatório, retorna 404.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+      responses:
+        '200':
+          description: Bytes da foto com contornos de rostos detectados
           headers:
             X-Content-Type-Options:
               schema:
@@ -2173,6 +2350,19 @@ components:
             Na criação do relatório, as chaves devem ser IDs dos campos
             campos_relatorio com escopo RELATORIO; campos não definidos nesse
             escopo são rejeitados.
+    RequisicaoAjusteRelatorio:
+      type: object
+      required: [pessoas]
+      properties:
+        pessoas:
+          type: array
+          maxItems: 400
+          description: >-
+            Lista completa de pessoas que substituirá a lista atual do
+            relatório. O backend recalcula as quantidades conforme as
+            categorias fornecidas; cada quantidade resultante aceita até 200.
+          items:
+            $ref: '#/components/schemas/PessoaRelatorio'
     PessoaRelatorio:
       type: object
       required: [nome, categoria]
@@ -3094,7 +3284,7 @@ components:
             $ref: '#/components/schemas/AvisoRelatorio'
     RespostaFormulario:
       type: object
-      required: [respostas, definicao, tem_foto]
+      required: [respostas, definicao, tem_foto, tem_foto_anotada, contagem_rostos]
       properties:
         respostas:
           type: object
@@ -3120,3 +3310,15 @@ components:
           $ref: '#/components/schemas/DefinicaoFormularioPersistida'
         tem_foto:
           type: boolean
+          description: Indica se a resposta do relatório tem a foto original armazenada.
+        tem_foto_anotada:
+          type: boolean
+          description: Indica se a foto com os contornos de rostos detectados está armazenada.
+        contagem_rostos:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: >-
+            Quantidade de rostos retornada pelo serviço de detecção; null para
+            respostas sem foto ou registros sem contagem disponível.

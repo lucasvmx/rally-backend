@@ -241,9 +241,9 @@ public class FormulariosController {
         acesso.exigirAdministracaoFormularios(req);
         return banco.query("""
                 SELECT r.respostas, r.nome_arquivo, r.arquivo, r.arquivo_anotado,
-                       r.contagem_rostos, f.definicao
+                       r.contagem_rostos, COALESCE(r.definicao, f.definicao) AS definicao
                 FROM respostas_formularios r
-                JOIN formularios_publicos f ON f.id = r.formulario_id
+                LEFT JOIN formularios_publicos f ON f.id = r.formulario_id
                 WHERE r.relatorio_id = ?
                 """,
             (rs, n) -> new RespostaFormulario(json.readTree(rs.getString("respostas")),

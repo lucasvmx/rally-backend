@@ -4,7 +4,7 @@ Backend Spring Boot do Rally das Tribos, com persistência PostgreSQL e migratio
 
 ## Desenvolvimento local
 
-O projeto requer Java 25 e Maven 3.9. Configure um PostgreSQL acessível em `localhost:5432` ou ajuste as variáveis `RALLY_DATABASE_URL`, `RALLY_DATABASE_USUARIO` e `RALLY_DATABASE_SENHA`. As fotos enviadas pelos formulários são armazenadas sem análise facial. Depois, execute:
+O projeto requer Java 25 e Maven 3.9. Configure um PostgreSQL acessível em `localhost:5432` ou ajuste as variáveis `RALLY_DATABASE_URL`, `RALLY_DATABASE_USUARIO` e `RALLY_DATABASE_SENHA`. Configure `RALLY_FACE_DETECTION_URL` para apontar ao serviço HTTP de detecção de rostos (por padrão `http://host.docker.internal:7777`). Fotos são analisadas antes de serem gravadas com o relatório; a imagem original, a versão anotada e a contagem ficam disponíveis apenas para assistentes e administradores. Depois, execute:
 
 ```sh
 mvn spring-boot:run

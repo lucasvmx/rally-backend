@@ -97,6 +97,14 @@ public class Relatorio {
         this.justificativaRevisao = justificativa;
     }
 
+    public void ajustarPessoas(int quantidadePessoas, int quantidadeNovosAfastados,
+                               List<Map<String, Object>> avisos) {
+        exigirEnviado();
+        this.quantidadePessoas = quantidadePessoas;
+        this.quantidadeNovosAfastados = quantidadeNovosAfastados;
+        this.avisos = avisos == null ? List.of() : List.copyOf(avisos);
+    }
+
     private void exigirEnviado() {
         if (!"ENVIADO".equals(status)) {
             throw new IllegalStateException("Somente relatórios enviados podem ser revisados.");

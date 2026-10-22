@@ -16,8 +16,8 @@ spring:
     time-zone: America/Sao_Paulo
   servlet:
     multipart:
-      max-file-size: 15MB
-      max-request-size: 80MB
+      max-file-size: 5MB
+      max-request-size: 7MB
 
 logging:
   exception-conversion-word: "%wEx{5}"
@@ -39,6 +39,9 @@ rally:
     modelos-reserva: ${OPENROUTER_MODELOS_RESERVA:qwen/qwen3-next-80b-a3b-thinking}
   google-drive:
     pasta-central: ${GOOGLE_DRIVE_PASTA_CENTRAL:}
+  face-detection:
+    endereco: ${RALLY_FACE_DETECTION_URL:http://host.docker.internal:7777}
+    timeout-ms: ${RALLY_FACE_DETECTION_TIMEOUT_MS:40000}
 
 server:
   forward-headers-strategy: framework

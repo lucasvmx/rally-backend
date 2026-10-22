@@ -42,6 +42,10 @@ services:
       OPENROUTER_MODELO_FOTOS: ${OPENROUTER_MODELO_FOTOS:-deepseek/deepseek-v4.1-flash-1017}
       OPENROUTER_MODELOS_RESERVA: ${OPENROUTER_MODELOS_RESERVA:-qwen/qwen3-next-80b-a3b-thinking}
       GOOGLE_DRIVE_PASTA_CENTRAL: ${GOOGLE_DRIVE_PASTA_CENTRAL:-}
+      RALLY_FACE_DETECTION_URL: ${RALLY_FACE_DETECTION_URL:-http://host.docker.internal:7777}
+      RALLY_FACE_DETECTION_TIMEOUT_MS: ${RALLY_FACE_DETECTION_TIMEOUT_MS:-40000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${RALLY_BACKEND_PORT:-8080}:8080"
 
