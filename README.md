@@ -26,6 +26,20 @@ O serviço fica disponível na porta definida por `RALLY_BACKEND_PORT` (8080 por
 
 As orientações de execução, formulários públicos, Google Drive e plano tecnológico estão em [`documentacao/`](documentacao/). Os arquivos em [`referencias/servico-legado/`](referencias/servico-legado/) foram preservados para consulta; eles não fazem parte da compilação Maven.
 
+## Logs de requisições
+
+Em nível INFO, o backend registra início e término das requisições HTTP recebidas (`http_recebido_inicio` / `http_recebido_fim`) e enviadas pelo `RestClient` (`http_saida_inicio` / `http_saida_fim`), incluindo OpenRouter e Google Drive. O campo `request_id` relaciona a entrada às chamadas externas; `chamada_id` diferencia cada tentativa externa, inclusive chamadas a modelos de reserva.
+
+O término contém `status` e `duracao_ms`, calculada com relógio monotônico. Na saída, a duração vai até o fechamento da resposta pelo cliente, incluindo sua leitura; falhas de transporte geram `http_saida_falha` com a classe do erro e o tempo decorrido. As entradas atuais são síncronas e medem o processamento até o retorno da cadeia de filtros.
+
+Exemplo ilustrativo de resposta do OpenRouter:
+
+```text
+http_saida_fim request_id=... chamada_id=... metodo=POST destino=openrouter.ai status=200 duracao_ms=1842
+```
+
+Para proteger credenciais e dados pessoais, os logs omitem corpos, cabeçalhos e parâmetros de URL. Nas entradas, usam o template da rota (por exemplo, `/api/v1/publico/formularios/{token}`); requisições encerradas antes do mapeamento, como rejeições da segurança, usam `[nao_mapeada]`. Nas saídas, registram somente o host do destino. Consulte os registros com `make logs`.
+
 ## CI/CD na VPS
 
 O workflow [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) configura Temurin 25, lê o pacote Maven com `GITHUB_TOKEN`, executa `mvn verify` e implanta a branch `main` com `make deploy` em um runner Linux self-hosted. O runner precisa ter Maven 3.9 ou posterior, GNU Make 4.x, Docker Compose com BuildKit e acesso de leitura ao pacote GitHub `rally-face-detection-proto`; para baixar o JDK, também precisa acessar os servidores de distribuição do Java. O serviço gRPC deve estar ativo na VPS e sua porta deve aceitar tráfego apenas da rede Docker. Também é possível iniciar a implantação manualmente pela aba **Actions** do GitHub, selecionando a branch `main`.

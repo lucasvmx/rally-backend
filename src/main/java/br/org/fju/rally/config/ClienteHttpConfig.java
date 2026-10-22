@@ -9,6 +9,6 @@ public class ClienteHttpConfig {
 
     @Bean
     public RestClient.Builder construtorRestClient() {
-        return RestClient.builder();
+        return RestClient.builder().requestInterceptor(new LogsClienteHttpInterceptor());
     }
 }

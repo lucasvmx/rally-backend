@@ -134,7 +134,7 @@ public class GoogleDriveService {
         if (localUpload == null || localUpload.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "O Google Drive não iniciou o envio da foto.");
         }
-        JsonNode enviada = RestClient.create().put().uri(URI.create(localUpload))
+        JsonNode enviada = restClientBuilder.clone().build().put().uri(URI.create(localUpload))
                 .contentType(MediaType.parseMediaType(arquivo.getContentType() == null
                         ? MediaType.APPLICATION_OCTET_STREAM_VALUE : arquivo.getContentType()))
                 .body(new ByteArrayResource(arquivo.getBytes()) {
