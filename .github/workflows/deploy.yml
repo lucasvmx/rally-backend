@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: deploy-rally-backend
@@ -18,10 +17,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, rally]
     timeout-minutes: 45
-    env:
-      RALLY_MAVEN_USERNAME: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RALLY_FACE_DETECTION_PACKAGE_OWNER: ${{ vars.RALLY_FACE_DETECTION_PACKAGE_OWNER || github.repository_owner }}
 
     steps:
       - name: Baixar o código
@@ -32,15 +27,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '25'
-          server-id: github
-          server-username-env-var: RALLY_MAVEN_USERNAME
-          server-password-env-var: GITHUB_TOKEN
-          settings-path: ${{ runner.temp }}/rally-maven
 
       - name: Executar testes
-        env:
-          RALLY_MAVEN_SETTINGS_FILE: ${{ runner.temp }}/rally-maven/settings.xml
-        run: mvn -B -ntp -s "$RALLY_MAVEN_SETTINGS_FILE" verify
+        run: mvn -B -ntp verify
 
       - name: Deploy (prod)
         env:
@@ -52,10 +41,6 @@ jobs:
           RALLY_ASSISTENTES: ${{ vars.RALLY_ASSISTENTES }}
           RALLY_ADMINISTRADORES_SISTEMA: ${{ vars.RALLY_ADMINISTRADORES_SISTEMA }}
           RALLY_BACKEND_IMAGE: ${{ vars.RALLY_BACKEND_IMAGE }}
-          RALLY_FACE_DETECTION_HOST: host.docker.internal
-          RALLY_FACE_DETECTION_PORT: ${{ vars.RALLY_FACE_DETECTION_PORT || '50051' }}
-          RALLY_FACE_DETECTION_TOKEN: ${{ secrets.RALLY_FACE_DETECTION_TOKEN }}
-          RALLY_FACE_DETECTION_TIMEOUT_MS: ${{ vars.RALLY_FACE_DETECTION_TIMEOUT_MS || '30000' }}
           RALLY_JWT_SECRET: ${{ secrets.RALLY_JWT_SECRET }}
           SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID: ${{ secrets.SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID }}
           SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET: ${{ secrets.SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET }}

@@ -5,7 +5,6 @@ import br.org.fju.rally.repositorio.NacaoRepositorio;
 import br.org.fju.rally.repositorio.TriboRepositorio;
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.EnvioFormularioService;
-import br.org.fju.rally.servico.FaceDetectionClient;
 import org.junit.jupiter.api.Test;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.Nacao;
@@ -31,9 +30,8 @@ class FormulariosControllerTest {
     private final NacaoRepositorio nacoes = mock(NacaoRepositorio.class);
     private final TriboRepositorio tribos = mock(TriboRepositorio.class);
     private final EnvioFormularioService enviosFormulario = mock(EnvioFormularioService.class);
-    private final FaceDetectionClient detectorFaces = mock(FaceDetectionClient.class);
     private final FormulariosController controller = new FormulariosController(banco, JsonMapper.builder().build(),
-        new AcessoService(), enviosFormulario, missoes, nacoes, tribos, detectorFaces);
+        new AcessoService(), enviosFormulario, missoes, nacoes, tribos);
     private final UUID missao = UUID.randomUUID();
     private final UUID tribo = UUID.randomUUID();
     private final UUID nacao = UUID.randomUUID();
@@ -115,31 +113,15 @@ class FormulariosControllerTest {
         prepararReferenciaDoEnvio();
         var id = UUID.randomUUID();
         byte[] original = fotoValida().getBytes();
-        byte[] anotada = original.clone();
-        anotada[anotada.length - 1] ^= 1;
-        when(detectorFaces.detectar(any(byte[].class), eq("image/png")))
-            .thenReturn(new FaceDetectionClient.Resultado(original, anotada, "image/png", 2));
         var resposta = new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
             "Tribo", "Nação", 1, 0, "", java.time.LocalDateTime.now(), false, "ENVIADO", 0, null);
-        when(enviosFormulario.salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(), any()))
+        when(enviosFormulario.salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(),
+                any(byte[].class), eq("image/png")))
             .thenReturn(resposta);
         var resultado = controller.enviar(token, envio(missao, Map.of("pergunta", "Centro")), List.of(fotoValida()));
         assertThat(resultado.get("id")).isEqualTo(id);
-        verify(detectorFaces).detectar(eq(original), eq("image/png"));
-        verify(enviosFormulario).salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(), any());
-    }
-    @Test
-    void falhaNaDeteccaoNaoPersisteRelatorio() throws Exception {
-        formularioComCampo("texto", List.of());
-        prepararReferenciaDoEnvio();
-        when(detectorFaces.detectar(any(byte[].class), eq("image/png")))
-            .thenThrow(new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "indisponível"));
-
-        assertThatThrownBy(() -> controller.enviar(token,
-                envio(missao, Map.of("pergunta", "Centro")), List.of(fotoValida())))
-            .isInstanceOf(ResponseStatusException.class);
-        verifyNoInteractions(enviosFormulario);
+        verify(enviosFormulario).salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(),
+                eq(original), eq("image/png"));
     }
     @Test
     void fotoObrigatoriaEArquivoDisfarcadoSaoRejeitados() {

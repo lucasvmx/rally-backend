@@ -2,7 +2,6 @@ package br.org.fju.rally.api;
 
 import br.org.fju.rally.servico.AcessoService;
 import br.org.fju.rally.servico.EnvioFormularioService;
-import br.org.fju.rally.servico.FaceDetectionClient;
 import br.org.fju.rally.dominio.Tribo;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.NacaoRepositorio;
@@ -29,18 +28,16 @@ public class FormulariosController {
     private final JsonMapper json;
     private final AcessoService acesso;
     private final EnvioFormularioService enviosFormulario;
-    private final FaceDetectionClient detectorFaces;
     private final MissaoRepositorio missoes;
     private final NacaoRepositorio nacoes;
     private final TriboRepositorio tribos;
     @Autowired
     public FormulariosController(JdbcTemplate banco, JsonMapper json, AcessoService acesso,
             EnvioFormularioService enviosFormulario, MissaoRepositorio missoes, NacaoRepositorio nacoes,
-            TriboRepositorio tribos, FaceDetectionClient detectorFaces) {
+            TriboRepositorio tribos) {
         this.banco = banco; this.json = json; this.acesso = acesso;
         this.enviosFormulario = enviosFormulario; this.missoes = missoes;
         this.nacoes = nacoes; this.tribos = tribos;
-        this.detectorFaces = detectorFaces;
     }
     public record Campo(@NotBlank @Size(max=80) String id, @NotBlank @Size(max=200) String titulo,
                         @NotNull @Pattern(regexp="texto|paragrafo|numero|selecao") String tipo,
@@ -225,10 +222,6 @@ public class FormulariosController {
             conteudo = arquivo.getBytes();
             if (!assinaturaValida(conteudo, arquivo.getContentType())) throw erro("O arquivo não corresponde ao formato de foto informado.");
         }
-        FaceDetectionClient.Resultado analise = null;
-        if (arquivo != null) {
-            analise = detectorFaces.detectar(conteudo, arquivo.getContentType());
-        }
         Map<String, Object> dadosRelatorio = new LinkedHashMap<>(envio.respostas());
         RequisicaoRelatorio dadosDoRelatorio = new RequisicaoRelatorio(envio.relatorio().missaoId(),
                 envio.relatorio().triboId(), envio.relatorio().quantidadePessoas(),
@@ -239,7 +232,8 @@ public class FormulariosController {
         respostas.put("nomes_novos_afastados", nomesPorCategoria(pessoas, true));
         respostas.put("pessoas", pessoas);
         respostas.put("preenchido_por", envio.preenchidoPor());
-        RespostaRelatorio relatorio = enviosFormulario.salvar(form.id(), dadosDoRelatorio, respostas, analise);
+        RespostaRelatorio relatorio = enviosFormulario.salvar(form.id(), dadosDoRelatorio, respostas,
+                conteudo, arquivo == null ? null : arquivo.getContentType());
         return Map.of("id", relatorio.id(), "avisos", relatorio.avisos());
     }
     @GetMapping("/formularios/respostas/{id}")

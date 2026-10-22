@@ -25,17 +25,15 @@ public class EnvioFormularioService {
 
     @Transactional
     public RespostaRelatorio salvar(UUID formularioId, RequisicaoRelatorio requisicao,
-                                    Map<String, Object> respostas, FaceDetectionClient.Resultado analise) {
-        RespostaRelatorio relatorio = relatorios.criarPublico(requisicao, analise != null);
+                                    Map<String, Object> respostas, byte[] foto, String tipoFoto) {
+        RespostaRelatorio relatorio = relatorios.criarPublico(requisicao, foto != null);
         banco.update("""
                 INSERT INTO respostas_formularios(
-                    relatorio_id, formulario_id, respostas, nome_arquivo, tipo_arquivo,
-                    arquivo, arquivo_anotado, contagem_rostos)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    relatorio_id, formulario_id, respostas, nome_arquivo, tipo_arquivo, arquivo)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-            relatorio.id(), formularioId, json.writeValueAsString(respostas), analise == null ? null : "foto",
-            analise == null ? null : analise.mediaType(), analise == null ? null : analise.imagemOriginal(),
-            analise == null ? null : analise.imagemAnotada(), analise == null ? null : analise.contagemRostos());
+            relatorio.id(), formularioId, json.writeValueAsString(respostas), foto == null ? null : "foto",
+            tipoFoto, foto);
         return relatorio;
     }
 }

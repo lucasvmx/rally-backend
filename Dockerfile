@@ -1,23 +1,11 @@
-# syntax=docker/dockerfile:1.7
 FROM maven:3.9-eclipse-temurin-25 AS compilacao
 WORKDIR /app
-ARG RALLY_FACE_DETECTION_PACKAGE_OWNER
 
 COPY pom.xml .
-RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
-    --mount=type=secret,id=github_token,target=/run/secrets/github_token,required=false \
-    --mount=type=secret,id=github_actor,target=/run/secrets/github_actor,required=false \
-    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
-    GITHUB_ACTOR="$(cat /run/secrets/github_actor 2>/dev/null || true)" \
-    mvn -B -ntp dependency:go-offline
+mvn -B -ntp dependency:go-offline
 
 COPY src src
-RUN --mount=type=secret,id=maven_settings,target=/root/.m2/settings.xml,required=false \
-    --mount=type=secret,id=github_token,target=/run/secrets/github_token,required=false \
-    --mount=type=secret,id=github_actor,target=/run/secrets/github_actor,required=false \
-    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
-    GITHUB_ACTOR="$(cat /run/secrets/github_actor 2>/dev/null || true)" \
-    mvn -B -ntp -DskipTests package
+RUN mvn -B -ntp -DskipTests package
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
