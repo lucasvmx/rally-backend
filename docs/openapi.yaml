@@ -583,18 +583,22 @@ paths:
   /api/v1/missoes/interpretar:
     post:
       tags: [Dados do Rally]
-      summary: Interpreta uma mensagem de missões com a IA
+      summary: Inicia a interpretação assíncrona de uma mensagem de missões
       description: >-
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Envia o texto para a
-        IA configurada e retorna missões sugeridas para revisão; esta operação
-        não as cria. Links Google Forms encontrados na mensagem podem ser
-        associados às sugestões ou retornados para associação manual. A
-        interpretação de missões exige OPENROUTER_API_KEY e
-        OPENROUTER_MODELO_REGRAS configurados; se a configuração estiver
-        ausente ou a IA não conseguir produzir uma interpretação, a resposta é
-        503. A identidade e a role vêm da sessão autenticada ou do JWT em
+        IA configurada e aceita a tarefa sem aguardar sua conclusão. Use o UUID
+        informado em X-Interpretacao-Id para consultar o estado em
+        GET /api/v1/missoes/interpretar/{id} e, se necessário, solicitar o
+        cancelamento com DELETE nessa rota. O mesmo identificador enviado
+        novamente pelo mesmo usuário retorna a tarefa já registrada. As tarefas
+        só podem ser consultadas ou canceladas pelo usuário que as iniciou.
+        A interpretação não cria missões. Falhas do modelo, inclusive ausência
+        de configuração da integração, aparecem como estado FALHOU na consulta
+        da tarefa; 503 nesta operação indica que não foi possível aceitar outra
+        tarefa. A identidade e a role vêm da sessão autenticada ou do JWT em
         Authorization: Bearer.
       parameters:
+        - $ref: '#/components/parameters/CabecalhoInterpretacaoId'
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
         required: true
@@ -603,20 +607,108 @@ paths:
             schema:
               $ref: '#/components/schemas/RequisicaoInterpretacao'
       responses:
-        '200':
-          description: Sugestões de missões retornadas pela IA
+        '202':
+          description: Tarefa de interpretação aceita
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RespostaInterpretacaoMissoes'
+                $ref: '#/components/schemas/RespostaInterpretacaoAssincrona'
+              example:
+                id: 00bc39d1-3fa3-4c9f-93ac-06af1a086ee4
+                estado: PROCESSANDO
+                resultado: null
+                mensagem_erro: null
         '400':
           $ref: '#/components/responses/ErroRequisicao'
         '401':
           $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
+        '404':
+          description: O UUID informado já pertence a uma tarefa de outro usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
         '503':
-          description: Serviço de interpretação por IA indisponível ou não configurado
+          description: Serviço de interpretação sem capacidade para aceitar outra tarefa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /api/v1/missoes/interpretar/{id}:
+    get:
+      tags: [Dados do Rally]
+      summary: Consulta o estado de uma interpretação de missões
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Somente o usuário que
+        iniciou a tarefa pode consultá-la. Quando estado for CONCLUIDA,
+        resultado contém as sugestões para revisão; quando for FALHOU,
+        mensagem_erro contém a mensagem disponível. Tarefas em estado terminal
+        são mantidas temporariamente (5 minutos) e podem deixar de estar
+        disponíveis após esse período.
+      parameters:
+        - $ref: '#/components/parameters/InterpretacaoId'
+      responses:
+        '200':
+          description: Estado atual da tarefa de interpretação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaInterpretacaoAssincrona'
+              examples:
+                emProcessamento:
+                  summary: Interpretação ainda em execução
+                  value:
+                    id: 00bc39d1-3fa3-4c9f-93ac-06af1a086ee4
+                    estado: PROCESSANDO
+                    resultado: null
+                    mensagem_erro: null
+                falhou:
+                  summary: Interpretação concluída com falha
+                  value:
+                    id: 00bc39d1-3fa3-4c9f-93ac-06af1a086ee4
+                    estado: FALHOU
+                    resultado: null
+                    mensagem_erro: Não foi possível interpretar as missões. Tente novamente.
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+    delete:
+      tags: [Dados do Rally]
+      summary: Solicita o cancelamento de uma interpretação
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA e proteção CSRF.
+        Uma tarefa existente só pode ser cancelada pelo usuário que a iniciou.
+        A solicitação interrompe o worker da tarefa em execução; estados
+        terminais não são alterados. Se o UUID ainda não estiver registrado, a
+        operação o registra como CANCELADA. A operação não retorna um corpo.
+      parameters:
+        - $ref: '#/components/parameters/InterpretacaoId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Solicitação de cancelamento processada; sem corpo de resposta
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          description: O UUID pertence a uma tarefa de outro usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '503':
+          description: Serviço sem capacidade para registrar o cancelamento
           content:
             application/json:
               schema:
@@ -1461,6 +1553,16 @@ components:
         houver sessão autenticada.
       schema:
         type: string
+    CabecalhoInterpretacaoId:
+      name: X-Interpretacao-Id
+      in: header
+      required: true
+      description: >-
+        UUID escolhido pelo cliente para identificar a tarefa. Reenvios do POST
+        com o mesmo UUID pelo mesmo usuário retornam a tarefa já registrada.
+      schema:
+        type: string
+        format: uuid
     EmailUsuario:
       name: email
       in: path
@@ -1497,6 +1599,14 @@ components:
       in: path
       required: true
       description: Identificador UUID da missão.
+      schema:
+        type: string
+        format: uuid
+    InterpretacaoId:
+      name: id
+      in: path
+      required: true
+      description: Identificador UUID da tarefa de interpretação.
       schema:
         type: string
         format: uuid
@@ -2637,6 +2747,32 @@ components:
           type: object
           allOf:
             - $ref: '#/components/schemas/DadosRally'
+          nullable: true
+    RespostaInterpretacaoAssincrona:
+      type: object
+      required: [id, estado, resultado, mensagem_erro]
+      description: >-
+        Estado de uma tarefa assíncrona. resultado é preenchido somente para
+        CONCLUIDA; mensagem_erro é preenchida somente para FALHOU. Os demais
+        estados retornam ambos como null.
+      properties:
+        id:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum: [NA_FILA, PROCESSANDO, CONCLUIDA, FALHOU, CANCELADA]
+          description: >-
+            NA_FILA indica aguardando execução; PROCESSANDO indica execução em
+            andamento; CONCLUIDA indica resultado disponível; FALHOU indica
+            erro de interpretação; CANCELADA indica que o cancelamento foi
+            solicitado.
+        resultado:
+          allOf:
+            - $ref: '#/components/schemas/RespostaInterpretacaoMissoes'
+          nullable: true
+        mensagem_erro:
+          type: string
           nullable: true
     MissaoSugerida:
       type: object

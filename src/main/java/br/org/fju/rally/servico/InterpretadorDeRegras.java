@@ -12,11 +12,14 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -106,6 +109,7 @@ public class InterpretadorDeRegras {
             try {
                 return chamarOpenRouterParaMissoes(texto, modelo);
             } catch (RuntimeException excecao) {
+                if (Thread.currentThread().isInterrupted()) throw excecao;
                 falhas.add(excecao);
             }
         }
@@ -129,7 +133,13 @@ public class InterpretadorDeRegras {
                         Map.of("role", "system", "content", promptSistemaMissoes()),
                         Map.of("role", "user", "content", texto)));
 
-        RestClient cliente = restClientBuilder.baseUrl(endereco).build();
+        JdkClientHttpRequestFactory fabricaRequisicao = new JdkClientHttpRequestFactory(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(20)).build());
+        fabricaRequisicao.setReadTimeout(Duration.ofMinutes(4));
+        RestClient cliente = restClientBuilder.clone()
+                .requestFactory(fabricaRequisicao)
+                .baseUrl(endereco)
+                .build();
         JsonNode resposta = cliente.post()
                 .uri("/chat/completions")
                 .contentType(MediaType.APPLICATION_JSON)

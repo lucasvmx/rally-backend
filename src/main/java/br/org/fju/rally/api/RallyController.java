@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -112,9 +113,23 @@ public class RallyController {
     }
 
     @PostMapping("/missoes/interpretar")
-    public RespostaInterpretacaoMissoes interpretarMissoes(@Valid @RequestBody RequisicaoInterpretacao corpo,
-                                                            HttpServletRequest requisicao) {
-        return missaoService.interpretar(corpo, requisicao);
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public RespostaInterpretacaoAssincrona iniciarInterpretacaoMissoes(
+            @RequestHeader("X-Interpretacao-Id") UUID id,
+            @Valid @RequestBody RequisicaoInterpretacao corpo, HttpServletRequest requisicao) {
+        return missaoService.iniciarInterpretacao(id, corpo, requisicao);
+    }
+
+    @GetMapping("/missoes/interpretar/{id}")
+    public RespostaInterpretacaoAssincrona consultarInterpretacaoMissoes(@PathVariable UUID id,
+                                                                         HttpServletRequest requisicao) {
+        return missaoService.consultarInterpretacao(id, requisicao);
+    }
+
+    @DeleteMapping("/missoes/interpretar/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void cancelarInterpretacaoMissoes(@PathVariable UUID id, HttpServletRequest requisicao) {
+        missaoService.cancelarInterpretacao(id, requisicao);
     }
 
     @PostMapping("/missoes")

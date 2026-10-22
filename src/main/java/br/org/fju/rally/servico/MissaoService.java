@@ -5,7 +5,7 @@ import br.org.fju.rally.api.DadosRally;
 import br.org.fju.rally.api.RequisicaoCriarMissoes;
 import br.org.fju.rally.api.RequisicaoInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacao;
-import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
+import br.org.fju.rally.api.RespostaInterpretacaoAssincrona;
 import br.org.fju.rally.api.RespostaMissao;
 import br.org.fju.rally.api.RespostaRally;
 import br.org.fju.rally.dominio.Missao;
@@ -28,22 +28,37 @@ public class MissaoService {
     private final MissaoRepositorio missoes;
     private final RallyRepositorio rallies;
     private final InterpretadorDeRegras interpretador;
+    private final InterpretacaoMissoesAssincronaService interpretacoesAssincronas;
     private final AcessoService acesso;
     private final RegrasPontuacaoService regrasPontuacao;
 
     public MissaoService(MissaoRepositorio missoes, RallyRepositorio rallies,
-                         InterpretadorDeRegras interpretador, AcessoService acesso,
+                         InterpretadorDeRegras interpretador,
+                         InterpretacaoMissoesAssincronaService interpretacoesAssincronas,
+                         AcessoService acesso,
                          RegrasPontuacaoService regrasPontuacao) {
         this.missoes = missoes;
         this.rallies = rallies;
         this.interpretador = interpretador;
+        this.interpretacoesAssincronas = interpretacoesAssincronas;
         this.acesso = acesso;
         this.regrasPontuacao = regrasPontuacao;
     }
 
-    public RespostaInterpretacaoMissoes interpretar(RequisicaoInterpretacao corpo, HttpServletRequest requisicao) {
-        acesso.exigirAssistente(requisicao);
-        return interpretador.interpretarMissoes(corpo.texto());
+    public RespostaInterpretacaoAssincrona iniciarInterpretacao(UUID id, RequisicaoInterpretacao corpo,
+                                                                 HttpServletRequest requisicao) {
+        AcessoService.ContextoAcesso contexto = acesso.exigirAssistenteEObterContexto(requisicao);
+        return interpretacoesAssincronas.iniciar(id, corpo.texto(), contexto.usuarioId());
+    }
+
+    public RespostaInterpretacaoAssincrona consultarInterpretacao(UUID id, HttpServletRequest requisicao) {
+        AcessoService.ContextoAcesso contexto = acesso.exigirAssistenteEObterContexto(requisicao);
+        return interpretacoesAssincronas.consultar(id, contexto.usuarioId());
+    }
+
+    public void cancelarInterpretacao(UUID id, HttpServletRequest requisicao) {
+        AcessoService.ContextoAcesso contexto = acesso.exigirAssistenteEObterContexto(requisicao);
+        interpretacoesAssincronas.cancelar(id, contexto.usuarioId());
     }
 
     public RespostaInterpretacao interpretarRegras(RequisicaoInterpretacao corpo, HttpServletRequest requisicao) {

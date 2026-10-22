@@ -83,11 +83,16 @@ public class AcessoService {
     }
 
     public void exigirAssistente(HttpServletRequest requisicao) {
+        exigirAssistenteEObterContexto(requisicao);
+    }
+
+    public ContextoAcesso exigirAssistenteEObterContexto(HttpServletRequest requisicao) {
         ContextoAcesso contexto = contexto(requisicao);
         if (!contexto.assistente() && !contexto.administradorSistema()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "Apenas assistentes ou administradores do sistema podem executar esta ação.");
         }
+        return contexto;
     }
 
     public void exigirAdministradorSistema(HttpServletRequest requisicao) {
