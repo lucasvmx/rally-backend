@@ -19,7 +19,7 @@ jobs:
     runs-on: [self-hosted, linux, rally]
     timeout-minutes: 45
     env:
-      GITHUB_ACTOR: ${{ github.actor }}
+      RALLY_MAVEN_USERNAME: ${{ github.actor }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RALLY_FACE_DETECTION_PACKAGE_OWNER: ${{ vars.RALLY_FACE_DETECTION_PACKAGE_OWNER || github.repository_owner }}
       RALLY_MAVEN_SETTINGS_FILE: ${{ runner.temp }}/rally-maven/settings.xml
@@ -34,7 +34,7 @@ jobs:
           distribution: temurin
           java-version: '25'
           server-id: github
-          server-username-env-var: GITHUB_ACTOR
+          server-username-env-var: RALLY_MAVEN_USERNAME
           server-password-env-var: GITHUB_TOKEN
           settings-path: ${{ runner.temp }}/rally-maven
 
