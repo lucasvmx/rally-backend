@@ -187,11 +187,7 @@ public class InterpretadorDeRegras {
             ambiguidades.add("Revise se todas as regras de pontuação da missão "
                     + (nome == null ? "sem nome" : "“" + nome + "”") + " foram estruturadas.");
         }
-        if (!temCampo(regra, "exige_foto", "foto_obrigatoria")) {
-            ambiguidades.add("Confirme se a missão " + (nome == null ? "sem nome" : "“" + nome + "”")
-                    + " exige foto.");
-        }
-        boolean exigeFoto = booleano(regra, "exige_foto", "foto_obrigatoria");
+        boolean exigeFoto = true;
         List<Map<String, Object>> camposRelatorio = objetos(regra.path("campos_relatorio"));
         return new MissaoSugerida(nome, descricao, inicio, fim, prazo, exigeFoto, link,
                 regrasPontuacao, camposRelatorio);
@@ -273,14 +269,6 @@ public class InterpretadorDeRegras {
         return null;
     }
 
-    private static boolean temCampo(JsonNode objeto, String... nomes) {
-        for (String nome : nomes) {
-            JsonNode valor = objeto.get(nome);
-            if (valor != null && !valor.isNull()) return true;
-        }
-        return false;
-    }
-
     private static LocalDate data(JsonNode objeto, String... nomes) {
         String valor = texto(objeto, nomes);
         if (valor == null) return null;
@@ -290,7 +278,12 @@ public class InterpretadorDeRegras {
             try {
                 return LocalDate.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu"));
             } catch (DateTimeParseException tambemIgnorada) {
-                return null;
+                try {
+                    return LocalDate.parse(valor + "/" + LocalDate.now(ZoneId.of("America/Sao_Paulo")).getYear(),
+                            DateTimeFormatter.ofPattern("d/M/uuuu"));
+                } catch (DateTimeParseException dataInvalida) {
+                    return null;
+                }
             }
         }
     }
@@ -298,6 +291,11 @@ public class InterpretadorDeRegras {
     private static LocalDateTime dataHora(JsonNode objeto, LocalDate dataFim) {
         String valor = texto(objeto, "prazo_envio", "prazo");
         if (valor == null) return null;
+        Matcher semAno = Pattern.compile("^(\\d{1,2}/\\d{1,2})(?=\\s|$)").matcher(valor);
+        if (semAno.find()) {
+            valor = semAno.group(1) + "/" + LocalDate.now(ZoneId.of("America/Sao_Paulo")).getYear()
+                    + valor.substring(semAno.end());
+        }
         try {
             return LocalDateTime.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu HH:mm:ss"));
         } catch (DateTimeParseException ignorada) {
@@ -319,17 +317,6 @@ public class InterpretadorDeRegras {
                 }
             }
         }
-    }
-
-    private static boolean booleano(JsonNode objeto, String... nomes) {
-        for (String nome : nomes) {
-            JsonNode valor = objeto.get(nome);
-            if (valor == null || valor.isNull()) continue;
-            if (valor.isBoolean()) return valor.asBoolean();
-            String texto = valor.asText().toLowerCase();
-            return texto.equals("true") || texto.equals("sim") || texto.equals("yes");
-        }
-        return false;
     }
 
     private RespostaInterpretacao chamarOpenRouter(String texto, String modelo) {
@@ -390,7 +377,7 @@ public class InterpretadorDeRegras {
         regra.put("data_fim", LocalDate.now().toString());
         regra.put("pontos_por_pessoa", pontos);
         regra.put("tipo_de_pessoa", "integrante");
-        regra.put("exige_foto", texto.toLowerCase().contains("foto"));
+        regra.put("exige_foto", true);
         regra.put("bonificacoes", List.of());
         return new RespostaInterpretacao("FALLBACK_LOCAL", mensagem, texto, List.of(regra),
                 List.of("A sugestão local não substitui a revisão da assistente."));
@@ -400,14 +387,16 @@ public class InterpretadorDeRegras {
         return "Você interpreta recados do Rally das Tribos. Responda somente JSON válido, sem markdown, com "
                 + "a chave raiz 'regras'. Todas as chaves e valores de domínio devem estar em português brasileiro. "
                 + "Cada regra deve ter nome_missao, data_inicio, data_fim, prazo_envio, pontos_por_pessoa, "
-                + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Use o formato brasileiro "
+                + "pontos_por_novo_afastado, tipo_de_pessoa, exige_foto e bonificacoes. Todas as missões exigem "
+                + "exatamente uma foto por relatório: exige_foto é sempre true. Use o formato brasileiro "
                 + "DD/MM/AAAA para datas e DD/MM/AAAA HH:mm:ss para prazos com data e hora; use null quando não houver prazo. "
                 + "Não use o padrão ISO 8601 nem separe data e hora com 'T'. Preserve missões separadas, "
                 + "missões relâmpago e metas por nação. O escopo padrão de cada missão é TRIBO: credite os pontos de cada relatório à tribo correspondente. "
                 + "A pontuação da nação é somente a soma dos pontos de suas tribos, sem pontuação separada para a nação. "
                 + "Metas nacionais podem agregar os relatórios das tribos, mas distribua a premiação às tribos. "
                 + "Bonificações iguais para todas as tribos, acionadas pela conclusão de uma atividade por uma tribo chamada, devem ser registradas manualmente. "
-                + "Nunca aprove pontuação; apenas sugira regras para revisão humana.";
+                + "Quando houver apenas dia e mês, use o ano atual, " + LocalDate.now(ZoneId.of("America/Sao_Paulo")).getYear()
+                + ". Nunca aprove pontuação; apenas sugira regras para revisão humana.";
     }
 
     private String promptSistemaMissoes() {
@@ -415,12 +404,26 @@ public class InterpretadorDeRegras {
                 + "com a chave raiz 'rally' contendo nome, data_inicio e data_fim do Rally, 'missoes' contendo uma missão por atividade descrita, e uma chave 'ambiguidades' com "
                 + "dúvidas que exijam revisão humana. Para cada missão use exatamente os campos: nome, descricao, "
                 + "data_inicio (DD/MM/AAAA), data_fim (DD/MM/AAAA), prazo_envio (DD/MM/AAAA HH:mm:ss ou null), "
-                + "exige_foto, link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e "
-                + "campos_relatorio. Toda pontuação, inclusive pontos por pessoa, por quantidade e quaisquer "
+                + "exige_foto (sempre true), link_google_forms (URL HTTPS literal da mensagem ou null), regras_pontuacao e "
+                + "campos_relatorio. Preencha todas essas chaves em cada missão, usando null apenas quando o dado "
+                + "realmente não estiver disponível. Toda pontuação, inclusive pontos por pessoa, por quantidade e quaisquer "
                 + "bonificações, deve aparecer somente em regras_pontuacao; não retorne campos fixos de pontuação "
                 + "na missão. Use POR_PESSOA com categoria INTEGRANTE ou NOVO_AFASTADO para pontuar pessoas. "
                 + "Use A_CADA para bonificações recorrentes a cada quantidade configurável, META para metas e "
                 + "META_COMPOSTA para recompensas com critérios alternativos. "
+                + "O caso comum é presença em reunião da igreja: descreva a reunião e pontue a presença somente "
+                + "quando o recado especificar valores. Se levar pessoa nova, afastada ou convidada render mais pontos, "
+                + "crie regras POR_PESSOA separadas com valores e condições exatos do recado; não invente bônus nem "
+                + "confunda a presença do integrante com a do convidado. "
+                + "Toda missão exige uma foto de comprovação por relatório enviado, inclusive quando o recado omitir "
+                + "esse requisito. Não crie campo adicional de foto em campos_relatorio. O envio atual é por Google Forms; "
+                + "o formulário de referência é https://docs.google.com/forms/d/e/1FAIpQLSffIZkGlsqpucoob1zGnOH7-39Konicm4U2HFUwJnVnI9i7vg/viewform. "
+                + "Esse endereço é apenas um modelo: não o atribua a uma missão se não constar do recado. O modelo "
+                + "pede nação, tribo, missão da semana, uma foto, nomes e quantidades de integrantes, novos e afastados "
+                + "presentes na foto, além de quem preencheu. Jovem afastado é quem não participa do Encontro FJU "
+                + "por três sábados consecutivos. A foto deve destacar novos e afastados, quando houver. Use as "
+                + "categorias e contagens de pessoas já disponíveis no relatório; crie campos_relatorio extras apenas "
+                + "para critérios adicionais efetivamente exigidos pela missão. "
                 + "Use o formato brasileiro DD/MM/AAAA em todas as datas do Rally e das missões e DD/MM/AAAA HH:mm:ss "
                 + "nos prazos com data e hora. Não use o padrão ISO 8601 nem separe data e hora com 'T'. "
                 + "O escopo padrão de toda missão é TRIBO: avalie sua pontuação separadamente para cada tribo e credite os pontos à tribo do relatório. "
@@ -457,11 +460,11 @@ public class InterpretadorDeRegras {
                 + "crie um campo PESSOA para registrar essa ação e use POR_PESSOA com a condição correspondente; se a mesma ação contar para uma meta coletiva, "
                 + "use META com campo pessoas e o mesmo filtro em quando_pessoa para evitar divergência entre a recompensa individual e o total da meta. "
                 + "Quando a quantidade for informada diretamente por relatório, crie um campo RELATORIO numérico e reutilize o mesmo campo na pontuação por unidade e na meta. "
-                + "Não crie campos duplicados para representar a mesma quantidade. Não invente datas, "
+                + "Não crie campos duplicados para representar a mesma quantidade. Não invente datas completas, "
                 + "valores nem links; quando faltar informação, use zero/null e registre a ambiguidade. Uma missão "
                 + "com mais de uma data de realização pode ter um período entre data_inicio e data_fim. A data de "
-                + "referência é " + LocalDate.now(ZoneId.of("America/Sao_Paulo")) + "; se o ano não estiver explícito, "
-                + "use-o apenas como sugestão e registre que o ano precisa ser confirmado. Registre em ambiguidades "
+                + "referência é " + LocalDate.now(ZoneId.of("America/Sao_Paulo")) + "; se a data trouxer dia e mês sem ano, "
+                + "complete com o ano atual, sem registrar isso como ambiguidade. Não infira dia ou mês ausentes. Registre em ambiguidades "
                 + "toda condição de bônus que não possa ser calculada com os campos estruturados. Nunca aprove "
                 + "pontuação: produza somente sugestões para revisão humana.";
     }
