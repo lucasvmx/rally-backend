@@ -128,6 +128,7 @@ public class InterpretadorDeRegras {
         Map<String, Object> corpo = Map.of(
                 "model", modelo,
                 "temperature", 0,
+                "reasoning", Map.of("effort", "medium", "exclude", true),
                 "response_format", Map.of("type", "json_object"),
                 "messages", List.of(
                         Map.of("role", "system", "content", promptSistemaMissoes()),
@@ -439,6 +440,7 @@ public class InterpretadorDeRegras {
         Map<String, Object> corpo = Map.of(
                 "model", modelo,
                 "temperature", 0,
+                "reasoning", Map.of("effort", "medium", "exclude", true),
                 "response_format", Map.of("type", "json_object"),
                 "messages", List.of(
                         Map.of("role", "system", "content", promptSistema()),
