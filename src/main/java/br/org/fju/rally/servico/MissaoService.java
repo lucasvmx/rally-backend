@@ -117,7 +117,7 @@ public class MissaoService {
         return new Missao(UUID.randomUUID(), dados.nome().trim(), dados.descricao(), dados.dataInicio(), dados.dataFim(),
                 dados.prazoEnvio(), valor(dados.pontosPorPessoa()), valor(dados.pontosPorNovoAfastado()),
                 valor(dados.bonificacaoACadaCincoNovos()), valor(dados.metaNacional()),
-                valor(dados.bonificacaoMetaNacional()), dados.exigeFoto(),
+                valor(dados.bonificacaoMetaNacional()), true,
                 dados.tipoPessoa() == null ? "integrante" : dados.tipoPessoa(), link,
                 "PUBLICADA", 1, rally, regras, campos);
     }
