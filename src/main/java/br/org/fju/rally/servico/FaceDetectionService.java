@@ -1,6 +1,7 @@
 package br.org.fju.rally.servico;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -51,6 +52,10 @@ public class FaceDetectionService {
         try {
             return cliente.post()
                     .uri("/v1/detect")
+                    .headers(cabecalhos -> {
+                        // Evita que a fábrica JDK adicione gzip e deflate em campos separados.
+                        cabecalhos.set(HttpHeaders.ACCEPT_ENCODING, "gzip, deflate");
+                    })
                     .contentType(MediaType.parseMediaType(tipoOriginal))
                     .body(original)
                     .exchange((requisicao, resposta) -> {
