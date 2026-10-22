@@ -22,7 +22,6 @@ jobs:
       RALLY_MAVEN_USERNAME: ${{ github.actor }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       RALLY_FACE_DETECTION_PACKAGE_OWNER: ${{ vars.RALLY_FACE_DETECTION_PACKAGE_OWNER || github.repository_owner }}
-      RALLY_MAVEN_SETTINGS_FILE: ${{ runner.temp }}/rally-maven/settings.xml
 
     steps:
       - name: Baixar o código
@@ -39,6 +38,8 @@ jobs:
           settings-path: ${{ runner.temp }}/rally-maven
 
       - name: Executar testes
+        env:
+          RALLY_MAVEN_SETTINGS_FILE: ${{ runner.temp }}/rally-maven/settings.xml
         run: mvn -B -ntp -s "$RALLY_MAVEN_SETTINGS_FILE" verify
 
       - name: Deploy (prod)
