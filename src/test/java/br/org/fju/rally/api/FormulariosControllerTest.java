@@ -114,7 +114,7 @@ class FormulariosControllerTest {
         var id = UUID.randomUUID();
         byte[] original = fotoValida().getBytes();
         var resposta = new RespostaRelatorio(id, missao, "Missão", UUID.randomUUID(),
-            "Tribo", "Nação", 1, 0, "", java.time.LocalDateTime.now(), false, "ENVIADO", 0, null);
+            "Tribo", "Nação", 1, 0, "", java.time.Instant.now(), false, "ENVIADO", 0, null);
         when(enviosFormulario.salvar(any(UUID.class), any(RequisicaoRelatorio.class), anyMap(),
                 any(byte[].class), eq("image/png")))
             .thenReturn(resposta);

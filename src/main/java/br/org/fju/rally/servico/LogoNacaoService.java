@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.Locale;
@@ -86,7 +87,7 @@ public class LogoNacaoService {
                 """, (resultado, indice) -> new LogoNacao(
                 resultado.getString("tipo_arquivo"),
                 resultado.getBytes("arquivo"),
-                resultado.getTimestamp("atualizada_em").toInstant()), nacaoId)
+                resultado.getObject("atualizada_em", OffsetDateTime.class).toInstant()), nacaoId)
                 .stream()
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Logo não encontrada."));

@@ -69,8 +69,8 @@ public class UsuariosController {
     }
 
     public record RespostaConta(UUID id, String email, PapelUsuario role, UUID tribeId, UUID nationId,
-            TipoContaUsuario accountType, java.time.OffsetDateTime criadaEm,
-            java.time.OffsetDateTime ultimoLoginEm) {
+            TipoContaUsuario accountType, java.time.Instant criadaEm,
+            java.time.Instant ultimoLoginEm) {
         static RespostaConta de(UsuarioAcessoService.ContaGerenciada conta) {
             return new RespostaConta(conta.id(), conta.email(), conta.role(), conta.tribeId(),
                     conta.nationId(), conta.accountType(), conta.criadaEm(), conta.ultimoLoginEm());

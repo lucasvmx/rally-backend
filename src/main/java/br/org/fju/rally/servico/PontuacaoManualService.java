@@ -15,8 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -87,7 +87,7 @@ public class PontuacaoManualService {
         PontuacaoManual registro = new PontuacaoManual(
                 UUID.randomUUID(), rally, triboChamada.getNacao(), triboChamada,
                 dados.atividade().trim(), pontos, responsavel,
-                LocalDateTime.now(FUSO_RALLY), destinatarias);
+                Instant.now(), destinatarias);
         return RespostaPontuacaoManual.de(pontuacoes.save(registro));
     }
 

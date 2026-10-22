@@ -2,7 +2,7 @@ package br.org.fju.rally.api;
 
 import br.org.fju.rally.dominio.PontuacaoManual;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 public record RespostaPontuacaoManual(
@@ -17,7 +17,7 @@ public record RespostaPontuacaoManual(
         int pontosPorTribo,
         int totalTribosBeneficiadas,
         String registradoPor,
-        LocalDateTime registradaEm
+        Instant registradaEm
 ) {
     public static RespostaPontuacaoManual de(PontuacaoManual pontuacao) {
         return new RespostaPontuacaoManual(

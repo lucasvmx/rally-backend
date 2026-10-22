@@ -12,8 +12,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -34,7 +34,7 @@ public class Missao {
     @Column(name = "data_fim", nullable = false)
     private LocalDate dataFim;
     @Column(name = "prazo_envio")
-    private LocalDateTime prazoEnvio;
+    private Instant prazoEnvio;
     @Column(name = "pontos_por_pessoa", nullable = false)
     private int pontosPorPessoa;
     @Column(name = "pontos_por_novo_afastado", nullable = false)
@@ -69,7 +69,7 @@ public class Missao {
     private List<Map<String, Object>> camposRelatorio;
 
     public Missao(UUID id, String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
-                  LocalDateTime prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
+                  Instant prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
                   int bonificacaoACadaCincoNovos, int metaNacional, int bonificacaoMetaNacional,
                   boolean exigeFoto, String tipoPessoa, String linkGoogleForms, String status, int versao,
                   Rally rally, List<Map<String, Object>> regrasPontuacao,
@@ -96,7 +96,7 @@ public class Missao {
     }
 
     public Missao(UUID id, String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
-                  LocalDateTime prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
+                  Instant prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
                   int bonificacaoACadaCincoNovos, int metaNacional, int bonificacaoMetaNacional,
                   boolean exigeFoto, String tipoPessoa, String status, int versao) {
         this(id, nome, descricao, dataInicio, dataFim, prazoEnvio, pontosPorPessoa, pontosPorNovoAfastado,

@@ -2,8 +2,8 @@ package br.org.fju.rally.api;
 
 import br.org.fju.rally.dominio.Missao;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -14,7 +14,7 @@ public record RespostaMissao(
         String descricao,
         LocalDate dataInicio,
         LocalDate dataFim,
-        LocalDateTime prazoEnvio,
+        Instant prazoEnvio,
         int pontosPorPessoa,
         int pontosPorNovoAfastado,
         int bonificacaoACadaCincoNovos,
@@ -31,7 +31,7 @@ public record RespostaMissao(
         List<Map<String, Object>> camposRelatorio
 ) {
     public RespostaMissao(UUID id, String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
-                          LocalDateTime prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
+                          Instant prazoEnvio, int pontosPorPessoa, int pontosPorNovoAfastado,
                           int bonificacaoACadaCincoNovos, int metaNacional, int bonificacaoMetaNacional,
                           boolean exigeFoto, String tipoPessoa, String linkGoogleForms, String status, int versao) {
         this(id, nome, descricao, dataInicio, dataFim, prazoEnvio, pontosPorPessoa, pontosPorNovoAfastado,

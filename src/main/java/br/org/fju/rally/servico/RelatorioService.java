@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -54,7 +54,7 @@ public class RelatorioService {
         this.pessoaRepositorio = pessoaRepositorio;
         this.pontuacaoService = pontuacaoService;
         this.acessoService = acessoService;
-        this.relogio = Clock.systemDefaultZone();
+        this.relogio = Clock.systemUTC();
     }
 
     @Transactional(readOnly = true)
@@ -136,7 +136,7 @@ public class RelatorioService {
         dados.put("quantidade_pessoas_declarada", corpo.quantidadePessoas());
         dados.put("quantidade_novos_afastados_declarada", corpo.quantidadeNovosAfastados());
 
-        LocalDateTime agora = LocalDateTime.now(relogio);
+        Instant agora = Instant.now(relogio);
         boolean atrasado = missao.getPrazoEnvio() != null && agora.isAfter(missao.getPrazoEnvio());
         Relatorio relatorio = new Relatorio(relatorioId, missao, tribo, integrantesAceitos, novosAceitos,
                 corpo.observacoes(), agora, atrasado, "ENVIADO", 0, null, dados, avisos);

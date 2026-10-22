@@ -12,7 +12,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -39,5 +39,5 @@ public class ArquivoDrive {
     @Column(name = "hash_arquivo")
     private String hashArquivo;
     @Column(name = "enviado_em", nullable = false)
-    private LocalDateTime enviadoEm;
+    private Instant enviadoEm;
 }

@@ -12,7 +12,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -40,7 +40,7 @@ public class Relatorio {
     @Column(name = "observacoes")
     private String observacoes;
     @Column(name = "enviado_em", nullable = false)
-    private LocalDateTime enviadoEm;
+    private Instant enviadoEm;
     @Column(name = "atrasado", nullable = false)
     private boolean atrasado;
     @Column(name = "status", nullable = false)
@@ -59,7 +59,7 @@ public class Relatorio {
     private List<Map<String, Object>> avisos;
 
     public Relatorio(UUID id, Missao missao, Tribo tribo, int quantidadePessoas, int quantidadeNovosAfastados,
-                     String observacoes, LocalDateTime enviadoEm, boolean atrasado, String status,
+                     String observacoes, Instant enviadoEm, boolean atrasado, String status,
                      int pontosAprovados, String justificativaRevisao, Map<String, Object> dados,
                      List<Map<String, Object>> avisos) {
         this.id = id;
@@ -78,7 +78,7 @@ public class Relatorio {
     }
 
     public Relatorio(UUID id, Missao missao, Tribo tribo, int quantidadePessoas, int quantidadeNovosAfastados,
-                     String observacoes, LocalDateTime enviadoEm, boolean atrasado, String status,
+                     String observacoes, Instant enviadoEm, boolean atrasado, String status,
                      int pontosAprovados, String justificativaRevisao) {
         this(id, missao, tribo, quantidadePessoas, quantidadeNovosAfastados, observacoes, enviadoEm,
                 atrasado, status, pontosAprovados, justificativaRevisao, Map.of(), List.of());

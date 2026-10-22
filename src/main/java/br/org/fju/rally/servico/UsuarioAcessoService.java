@@ -8,11 +8,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import java.time.OffsetDateTime;
 
 @Service
 public class UsuarioAcessoService {
@@ -44,7 +47,12 @@ public class UsuarioAcessoService {
     }
 
     public record ContaGerenciada(UUID id, String email, PapelUsuario role, UUID tribeId, UUID nationId,
-            TipoContaUsuario accountType, OffsetDateTime criadaEm, OffsetDateTime ultimoLoginEm) {}
+            TipoContaUsuario accountType, Instant criadaEm, Instant ultimoLoginEm) {}
+
+    private static Instant instante(ResultSet rs, String coluna) throws SQLException {
+        OffsetDateTime valor = rs.getObject(coluna, OffsetDateTime.class);
+        return valor == null ? null : valor.toInstant();
+    }
 
     public List<ContaGerenciada> listarContas() {
         return banco.query("""
@@ -54,8 +62,7 @@ public class UsuarioAcessoService {
                 rs.getObject("id", UUID.class), rs.getString("email"),
                 PapelUsuario.valueOf(rs.getString("papel")), rs.getObject("tribo_id", UUID.class),
                 rs.getObject("nacao_id", UUID.class), TipoContaUsuario.valueOf(rs.getString("tipo_conta")),
-                rs.getObject("criada_em", OffsetDateTime.class),
-                rs.getObject("ultimo_login_em", OffsetDateTime.class)));
+                instante(rs, "criada_em"), instante(rs, "ultimo_login_em")));
     }
 
     public ContaGerenciada buscarContaGerenciadaPorId(UUID id) {
@@ -66,7 +73,7 @@ public class UsuarioAcessoService {
                 rs.getObject("id", UUID.class), rs.getString("email"),
                 PapelUsuario.valueOf(rs.getString("papel")), rs.getObject("tribo_id", UUID.class),
                 rs.getObject("nacao_id", UUID.class), TipoContaUsuario.valueOf(rs.getString("tipo_conta")),
-                rs.getObject("criada_em", OffsetDateTime.class), rs.getObject("ultimo_login_em", OffsetDateTime.class)), id);
+                instante(rs, "criada_em"), instante(rs, "ultimo_login_em")), id);
         return contas.isEmpty() ? null : contas.getFirst();
     }
 

@@ -13,7 +13,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -48,7 +48,7 @@ public class PontuacaoManual {
     private String registradoPor;
 
     @Column(name = "registrada_em", nullable = false)
-    private LocalDateTime registradaEm;
+    private Instant registradaEm;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "pontuacoes_manuais_destinatarias",
@@ -58,7 +58,7 @@ public class PontuacaoManual {
 
     public PontuacaoManual(UUID id, Rally rally, Nacao nacao, Tribo triboChamada,
                            String atividade, int pontosPorTribo, String registradoPor,
-                           LocalDateTime registradaEm, List<Tribo> tribosDestinatarias) {
+                           Instant registradaEm, List<Tribo> tribosDestinatarias) {
         this.id = id;
         this.rally = rally;
         this.nacao = nacao;

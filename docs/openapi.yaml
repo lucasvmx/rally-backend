@@ -3,7 +3,11 @@ info:
   title: API Rally das Tribos
   version: 1.0.0
   description: >-
-    API REST do Rally das Tribos. O backend usa JSON em snake_case. Rotas privadas
+    API REST do Rally das Tribos. O backend usa JSON em snake_case. Campos com
+    formato date-time representam instantes UTC e são serializados com Z; o
+    cliente deve convertê-los para o horário local de exibição. Campos com
+    formato date continuam sendo datas de calendário sem conversão de fuso.
+    Rotas privadas
     aceitam a sessão Spring Security iniciada por login local ou OAuth2 Login do
     Google e também JWT no cabeçalho HTTP Authorization: Bearer. O JWT é emitido
     na resposta da sessão, expira em 48 horas e contém role e, para
@@ -1098,6 +1102,73 @@ paths:
         '403':
           $ref: '#/components/responses/AcessoNegado'
 
+  /api/v1/pontuacoes-manuais:
+    get:
+      tags: [Dados do Rally]
+      summary: Lista pontuações manuais do Rally ativo
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Consulta os registros
+        do Rally que contém a data atual em America/Sao_Paulo. Se não houver
+        Rally ativo, retorna 409. registrada_em é um instante serializado em
+        UTC com Z.
+      responses:
+        '200':
+          description: Pontuações manuais do Rally ativo
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaPontuacaoManual'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '409':
+          description: Não há um Rally ativo para consultar
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+    post:
+      tags: [Dados do Rally]
+      summary: Registra uma pontuação manual
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Registra a bonificação
+        para a nação e a tribo informadas no Rally que contém a data atual em
+        America/Sao_Paulo. pontos_por_tribo é opcional e assume o valor padrão
+        do serviço quando omitido ou nulo. A resposta inclui registrada_em
+        como instante UTC serializado com Z.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoPontuacaoManual'
+      responses:
+        '200':
+          description: Pontuação manual registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaPontuacaoManual'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: Não há um Rally ativo para registrar a pontuação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
   /api/v1/regras/interpretar:
     post:
       tags: [Regras]
@@ -2002,14 +2073,17 @@ components:
         criada_em:
           type: string
           format: date-time
-          description: Data e hora em que a conta Rally foi cadastrada.
+          description: Data e hora em que a conta Rally foi cadastrada, serializada em UTC com Z.
+          example: '2026-10-22T13:45:00Z'
         ultimo_login_em:
           type: string
           format: date-time
           nullable: true
           description: >-
             Data e hora do último login registrado; null quando não há registro.
-            Contas existentes podem não ter histórico anterior à V16.
+            Contas existentes podem não ter histórico anterior à V16. Quando
+            presente, o instante é serializado em UTC com Z.
+          example: '2026-10-22T13:45:00Z'
     RespostaSenhaProvisoria:
       type: object
       required: [senha_provisoria]
@@ -2197,7 +2271,11 @@ components:
           format: date
         prazo_envio:
           type: string
-          description: Data e hora local de São Paulo, sem offset de fuso horário; pode ser nulo.
+          format: date-time
+          description: >-
+            Instante ISO-8601/RFC3339 de entrada com Z ou offset explícito;
+            o backend normaliza e retorna em UTC com Z. Pode ser nulo.
+          example: '2026-10-22T13:45:00Z'
           nullable: true
         pontos_por_pessoa:
           type: integer
@@ -2448,7 +2526,9 @@ components:
           nullable: true
         enviado_em:
           type: string
-          description: Data e hora local de São Paulo, sem offset de fuso horário.
+          format: date-time
+          description: Instante do envio, serializado em UTC com Z.
+          example: '2026-10-22T13:45:00Z'
         atrasado:
           type: boolean
         status:
@@ -2534,6 +2614,74 @@ components:
         bonus_nacional:
           type: integer
           format: int64
+    RequisicaoPontuacaoManual:
+      type: object
+      required: [nacao_id, tribo_chamada_id, atividade]
+      properties:
+        nacao_id:
+          type: string
+          format: uuid
+        tribo_chamada_id:
+          type: string
+          format: uuid
+        atividade:
+          type: string
+          minLength: 1
+          maxLength: 180
+          description: Não pode ser vazia ou composta apenas por espaços.
+        pontos_por_tribo:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          nullable: true
+          description: Quando omitido ou nulo, o serviço usa o valor padrão de 7000 pontos.
+    RespostaPontuacaoManual:
+      type: object
+      required:
+        - id
+        - rally_id
+        - rally_nome
+        - nacao_id
+        - nacao_nome
+        - tribo_chamada_id
+        - tribo_chamada_nome
+        - atividade
+        - pontos_por_tribo
+        - total_tribos_beneficiadas
+        - registrado_por
+        - registrada_em
+      properties:
+        id:
+          type: string
+          format: uuid
+        rally_id:
+          type: string
+          format: uuid
+        rally_nome:
+          type: string
+        nacao_id:
+          type: string
+          format: uuid
+        nacao_nome:
+          type: string
+        tribo_chamada_id:
+          type: string
+          format: uuid
+        tribo_chamada_nome:
+          type: string
+        atividade:
+          type: string
+        pontos_por_tribo:
+          type: integer
+        total_tribos_beneficiadas:
+          type: integer
+        registrado_por:
+          type: string
+        registrada_em:
+          type: string
+          format: date-time
+          description: Instante do registro, serializado em UTC com Z.
+          example: '2026-10-22T13:45:00Z'
     RequisicaoInterpretacao:
       type: object
       required: [texto]
@@ -2567,7 +2715,11 @@ components:
           format: date
         prazo_envio:
           type: string
-          description: Data e hora local de São Paulo, sem offset de fuso horário.
+          format: date-time
+          description: >-
+            Data e hora sugerida como instante ISO-8601/RFC3339; é serializada
+            em UTC com Z. Pode ser nula.
+          example: '2026-10-22T13:45:00Z'
           nullable: true
         pontos_por_pessoa:
           type: integer
@@ -2999,7 +3151,11 @@ components:
           nullable: true
         prazo_envio:
           type: string
-          description: Data e hora local de São Paulo, sem offset de fuso horário.
+          format: date-time
+          description: >-
+            Instante ISO-8601/RFC3339 de entrada com Z ou offset explícito;
+            o backend normaliza e retorna em UTC com Z. Pode ser nulo.
+          example: '2026-10-22T13:45:00Z'
           nullable: true
         exige_foto:
           type: boolean

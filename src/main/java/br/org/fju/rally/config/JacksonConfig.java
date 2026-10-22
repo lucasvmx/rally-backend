@@ -13,6 +13,6 @@ public class JacksonConfig {
     JsonMapperBuilderCustomizer configuracaoJackson() {
         return construtor -> construtor
                 .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
-                .defaultTimeZone(TimeZone.getTimeZone("America/Sao_Paulo"));
+                .defaultTimeZone(TimeZone.getTimeZone("UTC"));
     }
 }

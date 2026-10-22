@@ -6,7 +6,7 @@ import br.org.fju.rally.dominio.Tribo;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,10 +16,10 @@ class PontuacaoServiceTest {
     @Test
     void calculaPontosDaMissaoComBonusCumulativoDeNovos() {
         Missao missao = new Missao(
-                UUID.randomUUID(), "Mega Help", "", LocalDate.now(), LocalDate.now(), LocalDateTime.now(),
+                UUID.randomUUID(), "Mega Help", "", LocalDate.now(), LocalDate.now(), Instant.now(),
                 4000, 5000, 25000, 0, 0, true, "integrante", "PUBLICADA", 1);
         Relatorio relatorio = new Relatorio(
-                UUID.randomUUID(), missao, null, 10, 6, null, LocalDateTime.now(), false,
+                UUID.randomUUID(), missao, null, 10, 6, null, Instant.now(), false,
                 "ENVIADO", 0, null);
 
         PontuacaoService servico = new PontuacaoService(null, null, null);
@@ -30,10 +30,10 @@ class PontuacaoServiceTest {
     @Test
     void naoAplicaBonusParcialAntesDeCompletarCincoNovos() {
         Missao missao = new Missao(
-                UUID.randomUUID(), "Mega Help", "", LocalDate.now(), LocalDate.now(), LocalDateTime.now(),
+                UUID.randomUUID(), "Mega Help", "", LocalDate.now(), LocalDate.now(), Instant.now(),
                 4000, 5000, 25000, 0, 0, true, "integrante", "PUBLICADA", 1);
         Relatorio relatorio = new Relatorio(
-                UUID.randomUUID(), missao, null, 10, 4, null, LocalDateTime.now(), false,
+                UUID.randomUUID(), missao, null, 10, 4, null, Instant.now(), false,
                 "ENVIADO", 0, null);
 
         PontuacaoService servico = new PontuacaoService(null, null, null);

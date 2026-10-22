@@ -7,8 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -17,7 +17,7 @@ public record DadosMissao(
         @Size(max = 10000) String descricao,
         @NotNull LocalDate dataInicio,
         @NotNull LocalDate dataFim,
-        LocalDateTime prazoEnvio,
+        Instant prazoEnvio,
         @Min(0) @Max(1000000) Integer pontosPorPessoa,
         @Min(0) @Max(1000000) Integer pontosPorNovoAfastado,
         @Min(0) @Max(1000000) Integer bonificacaoACadaCincoNovos,
@@ -30,7 +30,7 @@ public record DadosMissao(
         @Size(max = 30) List<Map<String, Object>> camposRelatorio
 ) {
     public DadosMissao(String nome, String descricao, LocalDate dataInicio, LocalDate dataFim,
-                       LocalDateTime prazoEnvio, Integer pontosPorPessoa, Integer pontosPorNovoAfastado,
+                       Instant prazoEnvio, Integer pontosPorPessoa, Integer pontosPorNovoAfastado,
                        Integer bonificacaoACadaCincoNovos, Integer metaNacional, Integer bonificacaoMetaNacional,
                        boolean exigeFoto, String tipoPessoa, String linkGoogleForms) {
         this(nome, descricao, dataInicio, dataFim, prazoEnvio, pontosPorPessoa, pontosPorNovoAfastado,
