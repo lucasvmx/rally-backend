@@ -87,7 +87,7 @@ public class FaceDetectionService {
                     });
         } catch (ResponseStatusException excecao) {
             throw excecao;
-        } catch (RestClientException | IOException excecao) {
+        } catch (RestClientException excecao) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Não foi possível processar a foto agora. Tente novamente.");
         }
