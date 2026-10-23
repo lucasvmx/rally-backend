@@ -519,10 +519,15 @@ public class InterpretadorDeRegras {
                 DD/MM/AAAA HH:mm:ss para prazos; use null se não houver prazo. Não use ISO 8601 nem "T".
                 Se houver dia e mês sem ano, use %s.
 
-                O escopo padrão é TRIBO: credite cada relatório à sua tribo. A pontuação da nação é apenas a soma
-                dos pontos das tribos. Metas nacionais podem agregar relatórios de tribos, mas a premiação vai para
-                as tribos. Bonificações iguais para todas as tribos, acionadas pela conclusão de uma atividade por
-                uma tribo indicada, devem ser registradas manualmente.
+                O escopo padrão é TRIBO: credite cada relatório à sua tribo. A pontuação da nação é somente a soma
+                dos pontos de suas tribos; não existe saldo nacional separado. Sempre que uma regra atribuir ou
+                retirar pontos no escopo NACAO, aplique o valor integral a todas as tribos da nação, sem dividi-lo
+                entre elas. Exemplo: +4.000 talentos para uma nação com quatro tribos significa +4.000 para cada
+                tribo (a soma nacional aumenta em 16.000); uma perda de 1.000 significa -1.000 para cada tribo.
+                Metas nacionais podem agregar relatórios de tribos, mas qualquer premiação nacional vai para todas
+                as tribos, inclusive as que não contribuíram com relatórios. Bonificações iguais para todas as
+                tribos, acionadas pela conclusão de uma atividade por uma tribo indicada, devem ser registradas
+                manualmente.
                 """.formatted(anoAtual);
     }
 
@@ -582,12 +587,16 @@ public class InterpretadorDeRegras {
                 separadas; não invente bônus nem confunda a presença do integrante com a do convidado.
 
                 O escopo padrão é TRIBO, calculado separadamente por tribo. Use NACAO somente para agregação nacional
-                explícita. A pontuação nacional é a soma dos totais das tribos; não crie nem conte pontos nacionais
-                novamente. Em regra nacional com bônus, use distribuir_para=TRIBOS se todas recebem ou
-                TRIBO_GERADORA se recebem apenas tribos com relatórios aprovados que contribuíram. Se o destino
-                não estiver claro, registre a dúvida. Uma bonificação igual para todas as tribos, acionada pela atividade de uma tribo indicada,
-                é manual. Em META_COMPOSTA, combine critérios alternativos em uma única recompensa para evitar pagá-la
-                duas vezes.
+                explícita. A pontuação nacional é somente a soma dos totais das tribos; não há saldo nacional separado.
+                Sempre que uma regra ou ajuste no escopo NACAO atribuir ou retirar pontos, aplique o valor integral a
+                todas as tribos da nação, sem dividi-lo pelo número de tribos. Exemplo: +4.000 talentos para uma nação
+                com quatro tribos significa +4.000 para cada tribo (a soma nacional aumenta em 16.000); uma perda de
+                1.000 significa -1.000 para cada tribo. Em regras nacionais com bônus, use distribuir_para=TRIBOS;
+                nunca use TRIBO_GERADORA, pois todas as tribos recebem o valor integral, mesmo as que não contribuíram
+                com relatórios. Não crie nem conte pontos nacionais novamente além da soma das tribos. Se não estiver
+                claro se a pontuação se aplica à nação ou somente a uma tribo, registre a dúvida. Uma bonificação igual
+                para todas as tribos, acionada pela atividade de uma tribo indicada, é manual. Em META_COMPOSTA, combine
+                critérios alternativos em uma única recompensa para evitar pagá-la duas vezes.
 
                 Condições usam "todas" ou "alguma" com folhas {campo, valor, operador, origem}; origem é RELATORIO
                 ou PESSOA. Operadores aceitos: IGUAL, DIFERENTE, MAIOR_QUE, MAIOR_OU_IGUAL, MENOR_QUE,
