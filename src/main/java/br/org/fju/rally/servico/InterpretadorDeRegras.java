@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -413,21 +414,21 @@ public class InterpretadorDeRegras {
             } catch (DateTimeParseException tambemIgnorada) {
                 try {
                     return LocalDateTime.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu HH:mm:ss"))
-                            .atZone(FUSO_RALLY).toInstant();
+                            .toInstant(ZoneOffset.UTC);
                 } catch (DateTimeParseException horarioBrasileiroInvalido) {
                     try {
-                        return LocalDateTime.parse(valor).atZone(FUSO_RALLY).toInstant();
+                        return LocalDateTime.parse(valor).toInstant(ZoneOffset.UTC);
                     } catch (DateTimeParseException horarioIsoInvalido) {
                         try {
                             return LocalDate.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu"))
-                                    .atStartOfDay(FUSO_RALLY).toInstant();
+                                    .atStartOfDay().toInstant(ZoneOffset.UTC);
                         } catch (DateTimeParseException dataBrasileiraInvalida) {
                             try {
-                                return LocalDate.parse(valor).atStartOfDay(FUSO_RALLY).toInstant();
+                                return LocalDate.parse(valor).atStartOfDay().toInstant(ZoneOffset.UTC);
                             } catch (DateTimeParseException dataIsoInvalida) {
                                 try {
                                     return dataFim == null ? null : dataFim.atTime(LocalTime.parse(valor))
-                                            .atZone(FUSO_RALLY).toInstant();
+                                            .toInstant(ZoneOffset.UTC);
                                 } catch (DateTimeParseException naoEhHorario) {
                                     return null;
                                 }
@@ -565,8 +566,9 @@ public class InterpretadorDeRegras {
 
                 Datas de Rally e missões: DD/MM/AAAA; prazo com hora: DD/MM/AAAA HH:mm:ss; prazo sem hora: DD/MM/AAAA.
                 Não use ISO 8601 nem "T". Referência: %s. Complete dia/mês sem ano com %s; não infira dia ou mês
-                ausentes; não registre o ano completado como ambiguidade. Uma missão com várias datas pode usar o período
-                entre a primeira e a última. Se as datas da missão não estiverem no recado, use o período do rali quando
+                ausentes; não registre o ano completado como ambiguidade. Preserve o dia e a hora informados no recado;
+                não converta as datas para outro fuso horário. Uma missão com várias datas pode usar o período entre a
+                primeira e a última. Se as datas da missão não estiverem no recado, use o período do rali quando
                 esse período estiver explícito; caso contrário deixe as datas null para o fluxo preencher pelo rali
                 associado, sem criar uma ambiguidade. Só use um prazo se estiver explícito; null é válido.
 
