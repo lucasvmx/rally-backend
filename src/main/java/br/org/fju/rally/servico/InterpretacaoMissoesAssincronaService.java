@@ -3,6 +3,7 @@ package br.org.fju.rally.servico;
 import br.org.fju.rally.api.RespostaInterpretacaoAssincrona;
 import br.org.fju.rally.api.RespostaInterpretacaoAssincrona.Estado;
 import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
+import br.org.fju.rally.api.EsforcoRaciocinio;
 import jakarta.annotation.PreDestroy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -50,6 +51,11 @@ public class InterpretacaoMissoesAssincronaService {
     }
 
     public RespostaInterpretacaoAssincrona iniciar(UUID id, String texto, UUID usuarioId) {
+        return iniciar(id, texto, EsforcoRaciocinio.HIGH, usuarioId);
+    }
+
+    public RespostaInterpretacaoAssincrona iniciar(UUID id, String texto, EsforcoRaciocinio esforcoRaciocinio,
+                                                    UUID usuarioId) {
         synchronized (travaAdmissao) {
             limparTarefasExpiradas();
             Tarefa existente = tarefas.get(id);
@@ -61,7 +67,7 @@ public class InterpretacaoMissoesAssincronaService {
 
             Tarefa nova = new Tarefa(id, usuarioId, false);
             FutureTask<Void> trabalho = new FutureTask<>(() -> {
-                processar(nova, texto);
+                processar(nova, texto, esforcoRaciocinio);
                 return null;
             });
             nova.registrarTrabalho(trabalho);
@@ -109,10 +115,10 @@ public class InterpretacaoMissoesAssincronaService {
         executor.shutdownNow();
     }
 
-    private void processar(Tarefa tarefa, String texto) {
+    private void processar(Tarefa tarefa, String texto, EsforcoRaciocinio esforcoRaciocinio) {
         if (!tarefa.iniciar()) return;
         try {
-            RespostaInterpretacaoMissoes resultado = interpretador.interpretarMissoes(texto);
+            RespostaInterpretacaoMissoes resultado = interpretador.interpretarMissoes(texto, esforcoRaciocinio);
             tarefa.concluir(resultado);
         } catch (RuntimeException excecao) {
             tarefa.falhar(mensagemSegura(excecao));

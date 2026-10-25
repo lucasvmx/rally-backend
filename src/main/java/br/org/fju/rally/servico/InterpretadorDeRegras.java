@@ -2,6 +2,7 @@ package br.org.fju.rally.servico;
 
 import br.org.fju.rally.api.DadosRally;
 import br.org.fju.rally.api.DadosMissao;
+import br.org.fju.rally.api.EsforcoRaciocinio;
 import br.org.fju.rally.api.MissaoSugerida;
 import br.org.fju.rally.api.RespostaInterpretacao;
 import br.org.fju.rally.api.RespostaInterpretacaoMissoes;
@@ -74,6 +75,11 @@ public class InterpretadorDeRegras {
     }
 
     public RespostaInterpretacao interpretar(String texto) {
+        return interpretar(texto, EsforcoRaciocinio.HIGH);
+    }
+
+    public RespostaInterpretacao interpretar(String texto, EsforcoRaciocinio esforcoRaciocinio) {
+        if (esforcoRaciocinio == null) esforcoRaciocinio = EsforcoRaciocinio.HIGH;
         if (chave == null || chave.isBlank() || modeloPrincipal == null || modeloPrincipal.isBlank()) {
             return interpretacaoLocal(texto, "OpenRouter não configurado; foi usada uma sugestão local para revisão.");
         }
@@ -90,7 +96,7 @@ public class InterpretadorDeRegras {
 
         for (String modelo : modelos) {
             try {
-                return chamarOpenRouter(texto, modelo);
+                return chamarOpenRouter(texto, modelo, esforcoRaciocinio);
             } catch (RuntimeException excecao) {
                 // O modelo reserva será tentado. O conteúdo do recado nunca é registrado.
             }
@@ -99,6 +105,11 @@ public class InterpretadorDeRegras {
     }
 
     public RespostaInterpretacaoMissoes interpretarMissoes(String texto) {
+        return interpretarMissoes(texto, EsforcoRaciocinio.HIGH);
+    }
+
+    public RespostaInterpretacaoMissoes interpretarMissoes(String texto, EsforcoRaciocinio esforcoRaciocinio) {
+        if (esforcoRaciocinio == null) esforcoRaciocinio = EsforcoRaciocinio.HIGH;
         if (chave == null || chave.isBlank() || modeloPrincipal == null || modeloPrincipal.isBlank()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "A interpretação de missões exige OPENROUTER_API_KEY e OPENROUTER_MODELO_REGRAS configurados.");
@@ -115,12 +126,12 @@ public class InterpretadorDeRegras {
         List<RuntimeException> falhas = new ArrayList<>();
         for (String modelo : modelos) {
             try {
-                return chamarOpenRouterParaMissoes(texto, modelo);
+                return chamarOpenRouterParaMissoes(texto, modelo, esforcoRaciocinio);
             } catch (FalhaValidacaoGeracao falhaValidacao) {
                 if (Thread.currentThread().isInterrupted()) throw falhaValidacao;
                 falhas.add(falhaValidacao);
                 try {
-                    return chamarOpenRouterParaMissoes(texto, modelo, falhaValidacao);
+                    return chamarOpenRouterParaMissoes(texto, modelo, esforcoRaciocinio, falhaValidacao);
                 } catch (RuntimeException falhaReparo) {
                     if (Thread.currentThread().isInterrupted()) throw falhaReparo;
                     falhas.add(falhaReparo);
@@ -141,11 +152,13 @@ public class InterpretadorDeRegras {
                 falhas.isEmpty() ? null : falhas.getLast());
     }
 
-    private RespostaInterpretacaoMissoes chamarOpenRouterParaMissoes(String texto, String modelo) {
-        return chamarOpenRouterParaMissoes(texto, modelo, null);
+    private RespostaInterpretacaoMissoes chamarOpenRouterParaMissoes(String texto, String modelo,
+                                                                       EsforcoRaciocinio esforcoRaciocinio) {
+        return chamarOpenRouterParaMissoes(texto, modelo, esforcoRaciocinio, null);
     }
 
     private RespostaInterpretacaoMissoes chamarOpenRouterParaMissoes(String texto, String modelo,
+                                                                       EsforcoRaciocinio esforcoRaciocinio,
                                                                        FalhaValidacaoGeracao falhaAnterior) {
         List<Map<String, String>> mensagens = new ArrayList<>();
         mensagens.add(Map.of("role", "system", "content", promptSistemaMissoes()));
@@ -163,7 +176,7 @@ public class InterpretadorDeRegras {
         Map<String, Object> corpo = Map.of(
                 "model", modelo,
                 "temperature", 0,
-                "reasoning", Map.of("effort", "medium", "exclude", true),
+                "reasoning", Map.of("effort", esforcoRaciocinio.valorOpenRouter(), "exclude", true),
                 "response_format", Map.of("type", "json_object"),
                 "messages", mensagens);
 
@@ -492,11 +505,12 @@ public class InterpretadorDeRegras {
         }
     }
 
-    private RespostaInterpretacao chamarOpenRouter(String texto, String modelo) {
+    private RespostaInterpretacao chamarOpenRouter(String texto, String modelo,
+                                                    EsforcoRaciocinio esforcoRaciocinio) {
         Map<String, Object> corpo = Map.of(
                 "model", modelo,
                 "temperature", 0,
-                "reasoning", Map.of("effort", "medium", "exclude", true),
+                "reasoning", Map.of("effort", esforcoRaciocinio.valorOpenRouter(), "exclude", true),
                 "response_format", Map.of("type", "json_object"),
                 "messages", List.of(
                         Map.of("role", "system", "content", promptSistema()),

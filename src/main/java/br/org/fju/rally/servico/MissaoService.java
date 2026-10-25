@@ -47,7 +47,7 @@ public class MissaoService {
     public RespostaInterpretacaoAssincrona iniciarInterpretacao(UUID id, RequisicaoInterpretacao corpo,
                                                                  HttpServletRequest requisicao) {
         AcessoService.ContextoAcesso contexto = acesso.exigirAssistenteEObterContexto(requisicao);
-        return interpretacoesAssincronas.iniciar(id, corpo.texto(), contexto.usuarioId());
+        return interpretacoesAssincronas.iniciar(id, corpo.texto(), corpo.esforcoRaciocinio(), contexto.usuarioId());
     }
 
     public RespostaInterpretacaoAssincrona consultarInterpretacao(UUID id, HttpServletRequest requisicao) {
@@ -62,7 +62,7 @@ public class MissaoService {
 
     public RespostaInterpretacao interpretarRegras(RequisicaoInterpretacao corpo, HttpServletRequest requisicao) {
         acesso.exigirAssistente(requisicao);
-        return interpretador.interpretar(corpo.texto());
+        return interpretador.interpretar(corpo.texto(), corpo.esforcoRaciocinio());
     }
 
     @Transactional
