@@ -2724,27 +2724,27 @@ components:
         pontos_por_pessoa:
           type: integer
           nullable: true
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         pontos_por_novo_afastado:
           type: integer
           nullable: true
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         bonificacao_a_cada_cinco_novos:
           type: integer
           nullable: true
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         meta_nacional:
           type: integer
           nullable: true
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         bonificacao_meta_nacional:
           type: integer
           nullable: true
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         exige_foto:
           type: boolean
@@ -2806,7 +2806,7 @@ components:
           type: string
         pontos:
           type: integer
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
           description: Pontos concedidos; obrigatório para META_COMPOSTA.
         campo:
@@ -2824,7 +2824,7 @@ components:
             numero no escopo RELATORIO.
         pontos_por_unidade:
           type: integer
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
         percentual:
           type: number
@@ -2906,7 +2906,8 @@ components:
           minimum: 0
         pontos:
           type: integer
-          minimum: 0
+          minimum: -1000000
+          maximum: 1000000
       additionalProperties: true
     FaixaPercentual:
       type: object
@@ -2919,7 +2920,7 @@ components:
           description: Limite percentual inclusivo da faixa; valores devem ser únicos na regra.
         pontos:
           type: integer
-          minimum: 0
+          minimum: -1000000
           maximum: 1000000
       additionalProperties: true
     CondicaoPontuacao:

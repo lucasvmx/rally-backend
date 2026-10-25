@@ -335,8 +335,8 @@ public class RegrasPontuacaoService {
                     throw erro("A regra de faixas precisa ter de uma a 30 faixas.");
                 for (Object faixa : faixas) {
                     if (!(faixa instanceof Map<?, ?> mapa)
-                            || inteiro(mapa.get("minimo"), -1) < 0 || inteiro(mapa.get("pontos"), -1) < 0) {
-                        throw erro("Cada faixa precisa informar minimo e pontos não negativos.");
+                            || inteiro(mapa.get("minimo"), -1) < 0 || !pontuacaoValida(mapa.get("pontos"))) {
+                        throw erro("Cada faixa precisa informar um mínimo não negativo e pontos entre -1.000.000 e 1.000.000.");
                     }
                 }
                 String estrategia = Objects.toString(regra.getOrDefault("estrategia", "MAIOR_FAIXA"))
@@ -362,13 +362,13 @@ public class RegrasPontuacaoService {
                 java.util.Set<BigDecimal> percentuais = new java.util.HashSet<>();
                 for (Object faixa : faixas) {
                     if (!(faixa instanceof Map<?, ?> mapa))
-                        throw erro("Cada faixa precisa informar percentual mínimo e pontos não negativos.");
+                        throw erro("Cada faixa precisa informar percentual mínimo e pontos entre -1.000.000 e 1.000.000.");
                     BigDecimal minimo = decimalEstrito(mapa.get("minimo_percentual"));
                     long pontos = inteiro(mapa.get("pontos"), -1);
                     if (minimo == null || minimo.signum() < 0
-                            || minimo.compareTo(BigDecimal.valueOf(100)) > 0 || pontos < 0 || pontos > 1_000_000
+                            || minimo.compareTo(BigDecimal.valueOf(100)) > 0 || !pontuacaoValida(pontos)
                             || !percentuais.add(minimo.stripTrailingZeros())) {
-                        throw erro("Cada faixa precisa ter um percentual mínimo único entre 0 e 100 e pontos entre 0 e 1.000.000.");
+                        throw erro("Cada faixa precisa ter um percentual mínimo único entre 0 e 100 e pontos entre -1.000.000 e 1.000.000.");
                     }
                 }
                 String estrategia = Objects.toString(regra.getOrDefault("estrategia", "MAIOR_FAIXA"))
@@ -489,7 +489,12 @@ public class RegrasPontuacaoService {
 
     private void exigirPontuacao(Map<String, Object> regra, String chave) {
         long valor = inteiro(regra.get(chave), -1);
-        if (valor < 0 || valor > 1_000_000) throw erro("A pontuação de cada regra deve estar entre 0 e 1.000.000.");
+        if (!pontuacaoValida(valor)) throw erro("A pontuação de cada regra deve estar entre -1.000.000 e 1.000.000.");
+    }
+
+    private boolean pontuacaoValida(Object valor) {
+        long pontos = inteiro(valor, Long.MIN_VALUE);
+        return pontos >= -1_000_000 && pontos <= 1_000_000;
     }
 
     private void exigirInteiroPositivo(Map<String, Object> regra, String chave) {
