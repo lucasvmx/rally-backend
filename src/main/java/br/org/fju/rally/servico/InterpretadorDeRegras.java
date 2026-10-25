@@ -607,7 +607,13 @@ public class InterpretadorDeRegras {
                 quando_pessoa filtra pessoas antes de contar. Em META_COMPOSTA, condicao_agregada soma cada campo
                 separadamente no escopo antes de testar a condição; folhas usam {campo, operador, valor} e podem ter
                 quando_pessoa. Cada grupo aceita até 30 itens; a árvore admite profundidade 8 (raiz no nível 0) e 200 nós.
-                Represente em quando critérios calculáveis como modalidade, camiseta, presença, foto, dia e local.
+                Gere "quando" ou "quando_pessoa" somente se o recado deixar explícitos e claros todos os critérios
+                necessários para definir a condição. Se a condição for ambígua, incompleta ou depender de informação
+                ausente, omita a chave correspondente por completo e registre a dúvida em ambiguidades quando isso
+                impedir uma pontuação correta. Nunca gere "quando": {}, "quando_pessoa": {}, null ou folhas com
+                campo, operador, valor ou origem vazios; não invente critérios para completar a condição. A ausência
+                de uma condição explícita significa que a regra não tem filtro: omita "quando". Represente em quando
+                apenas critérios calculáveis e claros, como modalidade, camiseta, presença, foto, dia e local.
 
                 campos_relatorio é uma lista de objetos {id, titulo, tipo, obrigatorio, opcoes, escopo}; tipo é
                 texto, paragrafo, numero ou selecao; escopo é RELATORIO ou PESSOA. opcoes é obrigatório para selecao.
@@ -621,7 +627,8 @@ public class InterpretadorDeRegras {
 
                 Antes de responder, confira cada regra e campo: todas as chaves obrigatórias do tipo estão presentes;
                 cada condição simples usa campo, operador, valor e origem válida; folhas de condicao_agregada usam
-                campo, operador e valor. Campos personalizados usados em condições estão definidos com ids únicos e o
+                campo, operador e valor. Se a condição não estiver clara, omita sua chave em vez de devolver um objeto
+                vazio ou incompleto. Campos personalizados usados em condições estão definidos com ids únicos e o
                 mesmo escopo; campos numéricos têm tipo numero; seleções têm opções; valores usam nomes de campos
                 existentes e categorias aceitas. Corrija a estrutura antes de devolver o JSON.
                 """.formatted(hoje, anoAtual);
