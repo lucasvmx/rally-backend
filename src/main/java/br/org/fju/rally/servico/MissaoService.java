@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.time.LocalDate;
 
@@ -30,19 +29,19 @@ public class MissaoService {
     private final InterpretadorDeRegras interpretador;
     private final InterpretacaoMissoesAssincronaService interpretacoesAssincronas;
     private final AcessoService acesso;
-    private final RegrasPontuacaoService regrasPontuacao;
+    private final ValidacaoConfiguracaoMissaoService validacaoConfiguracao;
 
     public MissaoService(MissaoRepositorio missoes, RallyRepositorio rallies,
                          InterpretadorDeRegras interpretador,
                          InterpretacaoMissoesAssincronaService interpretacoesAssincronas,
                          AcessoService acesso,
-                         RegrasPontuacaoService regrasPontuacao) {
+                         ValidacaoConfiguracaoMissaoService validacaoConfiguracao) {
         this.missoes = missoes;
         this.rallies = rallies;
         this.interpretador = interpretador;
         this.interpretacoesAssincronas = interpretacoesAssincronas;
         this.acesso = acesso;
-        this.regrasPontuacao = regrasPontuacao;
+        this.validacaoConfiguracao = validacaoConfiguracao;
     }
 
     public RespostaInterpretacaoAssincrona iniciarInterpretacao(UUID id, RequisicaoInterpretacao corpo,
@@ -126,15 +125,13 @@ public class MissaoService {
         if (link != null && !InterpretadorDeRegras.linkGoogleFormsValido(link)) {
             throw erro("Use um link HTTPS do Google Forms válido.");
         }
-        List<Map<String, Object>> regras = regrasPontuacao.normalizar(dados.regrasPontuacao(), dados);
-        List<Map<String, Object>> campos = validarCampos(dados.camposRelatorio());
-        validarCamposDasRegras(regras, campos);
+        ValidacaoConfiguracaoMissaoService.Configuracao configuracao = validacaoConfiguracao.validar(dados);
         return new Missao(UUID.randomUUID(), dados.nome().trim(), dados.descricao(), dados.dataInicio(), dados.dataFim(),
                 dados.prazoEnvio(), valor(dados.pontosPorPessoa()), valor(dados.pontosPorNovoAfastado()),
                 valor(dados.bonificacaoACadaCincoNovos()), valor(dados.metaNacional()),
                 valor(dados.bonificacaoMetaNacional()), true,
                 dados.tipoPessoa() == null ? "integrante" : dados.tipoPessoa(), link,
-                "PUBLICADA", 1, rally, regras, campos);
+                "PUBLICADA", 1, rally, configuracao.regrasPontuacao(), configuracao.camposRelatorio());
     }
 
     private DadosRally obterDadosRally(RequisicaoCriarMissoes corpo) {
@@ -177,109 +174,6 @@ public class MissaoService {
                 throw erro("As datas de cada missão precisam estar dentro do período do rally.");
             }
         }
-    }
-
-    private List<Map<String, Object>> validarCampos(List<Map<String, Object>> campos) {
-        if (campos == null) return List.of();
-        if (campos.size() > 30) throw erro("A missão pode ter no máximo 30 campos adicionais.");
-        java.util.Set<String> ids = new java.util.HashSet<>();
-        List<Map<String, Object>> normalizados = new java.util.ArrayList<>();
-        for (Map<String, Object> campo : campos) {
-            if (campo == null) throw erro("Confira os campos adicionais da missão: há um campo vazio.");
-            Object id = campo.get("id");
-            Object titulo = campo.get("titulo");
-            Object tipo = campo.get("tipo");
-            Object escopo = campo.getOrDefault("escopo", "RELATORIO");
-            Object obrigatorio = campo.getOrDefault("obrigatorio", false);
-            if (!(id instanceof String idTexto) || idTexto.isBlank() || !ids.add(idTexto)
-                    || idTexto.length() > 80
-                    || !(titulo instanceof String tituloTexto) || tituloTexto.isBlank()
-                    || tituloTexto.length() > 200
-                    || !(tipo instanceof String tipoTexto)
-                    || !List.of("texto", "paragrafo", "numero", "selecao").contains(tipoTexto)
-                    || !(escopo instanceof String escopoTexto)
-                    || !(obrigatorio instanceof Boolean)
-                    || !List.of("RELATORIO", "PESSOA").contains(escopoTexto.toUpperCase(java.util.Locale.ROOT))
-                    || ("categoria".equalsIgnoreCase(idTexto) && "PESSOA".equalsIgnoreCase(escopoTexto))) {
-                throw erro("Confira os campos adicionais da missão: identificadores, títulos e tipos precisam ser válidos e únicos.");
-            }
-            if ("selecao".equals(tipoTexto)
-                    && (!(campo.get("opcoes") instanceof List<?> opcoes) || opcoes.isEmpty() || opcoes.size() > 50
-                    || opcoes.stream().anyMatch(opcao -> !(opcao instanceof String texto)
-                    || texto.isBlank() || texto.length() > 200))) {
-                throw erro("Campos de seleção precisam ter de uma a 50 opções válidas.");
-            }
-            Map<String, Object> campoNormalizado = new java.util.LinkedHashMap<>(campo);
-            campoNormalizado.put("escopo", escopoTexto.toUpperCase(java.util.Locale.ROOT));
-            campoNormalizado.put("obrigatorio", obrigatorio);
-            normalizados.add(java.util.Collections.unmodifiableMap(campoNormalizado));
-        }
-        return List.copyOf(normalizados);
-    }
-
-    private void validarCamposDasRegras(List<Map<String, Object>> regras, List<Map<String, Object>> campos) {
-        java.util.Set<String> contagens = java.util.Set.of("integrantes", "pessoas", "total_pessoas",
-                "novos_afastados", "novos", "afastados", "convidados");
-        Map<String, Map<String, Object>> porId = new java.util.HashMap<>();
-        java.util.Set<String> camposRelatorio = new java.util.HashSet<>();
-        java.util.Set<String> camposPessoa = new java.util.HashSet<>();
-        campos.forEach(campo -> porId.put((String) campo.get("id"), campo));
-        campos.forEach(campo -> {
-            if ("PESSOA".equals(campo.get("escopo"))) camposPessoa.add((String) campo.get("id"));
-            else camposRelatorio.add((String) campo.get("id"));
-        });
-        for (Map<String, Object> regra : regras) {
-            String tipo = java.util.Objects.toString(regra.get("tipo"), "");
-            validarCondicoesDaRegra(regra.get("quando"), camposRelatorio, camposPessoa,
-                    "POR_PESSOA".equals(tipo) ? "PESSOA" : "RELATORIO");
-            validarCondicoesDaRegra(regra.get("quando_pessoa"), camposRelatorio, camposPessoa, "PESSOA");
-            if ("META_COMPOSTA".equals(tipo)) {
-                for (RegrasPontuacaoService.ReferenciaMetrica referencia :
-                        regrasPontuacao.referenciasCondicaoAgregada(regra.get("condicao_agregada"))) {
-                    validarCampoNumerico(referencia.campo(), contagens, porId);
-                    validarCondicoesDaRegra(referencia.quandoPessoa(), camposRelatorio, camposPessoa, "PESSOA");
-                }
-                continue;
-            }
-            if (!List.of("POR_QUANTIDADE", "A_CADA", "META", "FAIXAS", "PERCENTUAL", "FAIXAS_PERCENTUAIS")
-                    .contains(tipo)) continue;
-            validarCampoNumerico(texto(regra.get("campo")), contagens, porId);
-            if (tipo.equals("PERCENTUAL") || tipo.equals("FAIXAS_PERCENTUAIS")) {
-                validarCampoNumerico(texto(regra.get("campo_base")), contagens, porId);
-            }
-        }
-    }
-
-    private void validarCondicoesDaRegra(Object valor, java.util.Set<String> camposRelatorio,
-                                         java.util.Set<String> camposPessoa, String origemPadrao) {
-        if (!(valor instanceof Map<?, ?> condicao)) return;
-        Object lista = condicao.get("todas");
-        if (!(lista instanceof List<?>)) lista = condicao.get("alguma");
-        if (lista instanceof List<?> condicoes) {
-            condicoes.forEach(item -> validarCondicoesDaRegra(item, camposRelatorio, camposPessoa, origemPadrao));
-            return;
-        }
-        String id = texto(condicao.get("campo"));
-        String origem = java.util.Objects.toString(condicao.get("origem"), origemPadrao).toUpperCase(java.util.Locale.ROOT);
-        boolean conhecido = "PESSOA".equals(origem)
-                ? "categoria".equalsIgnoreCase(id) || camposPessoa.contains(id)
-                : camposRelatorio.contains(id);
-        if (!conhecido) throw erro("Uma condição da regra usa um campo que não foi definido no escopo informado.");
-    }
-
-    private void validarCampoNumerico(String id, java.util.Set<String> contagens,
-                                      Map<String, Map<String, Object>> campos) {
-        if (id == null) throw erro("Toda regra de quantidade precisa indicar um campo numérico.");
-        if (contagens.contains(id.toLowerCase(java.util.Locale.ROOT))) return;
-        Map<String, Object> campo = campos.get(id);
-        if (campo == null || !"numero".equals(campo.get("tipo"))
-                || !"RELATORIO".equalsIgnoreCase(java.util.Objects.toString(campo.get("escopo"), "RELATORIO"))) {
-            throw erro("As regras quantitativas precisam usar contagens conhecidas ou campos numéricos do relatório.");
-        }
-    }
-
-    private static String texto(Object valor) {
-        return valor instanceof String texto && !texto.isBlank() ? texto : null;
     }
 
     private static int valor(Integer valor) { return valor == null ? 0 : valor; }
