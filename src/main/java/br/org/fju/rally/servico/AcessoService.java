@@ -98,7 +98,7 @@ public class AcessoService {
     public void exigirAdministradorSistema(HttpServletRequest requisicao) {
         if (!contexto(requisicao).administradorSistema()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "Apenas administradores do sistema podem alterar papéis de usuários.");
+                    "Apenas administradores do sistema podem executar esta ação.");
         }
     }
 

@@ -870,6 +870,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/Erro'
 
+  /api/v1/relatorios/{id}:
+    delete:
+      tags: [Relatórios]
+      summary: Exclui um relatório
+      description: >-
+        Requer role ADMINISTRADOR_SISTEMA. Aceita sessão Spring Security local
+        ou OAuth2 Login Google, ou JWT emitido pelo backend em Authorization:
+        Bearer. A proteção CSRF também se aplica; obtenha o token em
+        /api/v1/autenticacao/csrf e envie X-XSRF-TOKEN. Pode excluir o relatório
+        em qualquer estado. A exclusão remove em cascata as respostas, fotos
+        e pessoas pontuadas associadas no banco de dados. Caso existam
+        registros de arquivos legados no Google Drive, a operação é recusada
+        para preservar suas referências.
+      parameters:
+        - $ref: '#/components/parameters/RelatorioId'
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Relatório excluído; não há corpo de resposta
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: O relatório possui registros de arquivos legados no Google Drive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
   /api/v1/relatorios/{id}/pessoas:
     put:
       tags: [Relatórios]

@@ -187,6 +187,12 @@ public class RallyController {
         return envioFormularioService.salvarRelatorioComFoto(corpo, requisicao, conteudo, tipo);
     }
 
+    @DeleteMapping("/relatorios/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void excluirRelatorio(@PathVariable UUID id, HttpServletRequest requisicao) {
+        relatorioService.excluir(id, requisicao);
+    }
+
     @PostMapping("/relatorios/{id}/aprovar")
     public RespostaRelatorio aprovar(@PathVariable UUID id, @RequestBody(required = false) RequisicaoRevisao corpo,
                                      HttpServletRequest requisicao) {

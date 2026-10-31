@@ -8,6 +8,7 @@ import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.PessoaPontuada;
 import br.org.fju.rally.dominio.Relatorio;
 import br.org.fju.rally.dominio.Tribo;
+import br.org.fju.rally.repositorio.ArquivoDriveRepositorio;
 import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.repositorio.PessoaPontuadaRepositorio;
 import br.org.fju.rally.repositorio.RelatorioRepositorio;
@@ -35,6 +36,7 @@ public class RelatorioService {
     private static final Pattern ESPACOS = Pattern.compile("\\s+");
 
     private final RelatorioRepositorio relatorioRepositorio;
+    private final ArquivoDriveRepositorio arquivoDriveRepositorio;
     private final MissaoRepositorio missaoRepositorio;
     private final TriboRepositorio triboRepositorio;
     private final PessoaPontuadaRepositorio pessoaRepositorio;
@@ -43,12 +45,14 @@ public class RelatorioService {
     private final Clock relogio;
 
     public RelatorioService(RelatorioRepositorio relatorioRepositorio,
+                            ArquivoDriveRepositorio arquivoDriveRepositorio,
                             MissaoRepositorio missaoRepositorio,
                             TriboRepositorio triboRepositorio,
                             PessoaPontuadaRepositorio pessoaRepositorio,
                             PontuacaoService pontuacaoService,
                             AcessoService acessoService) {
         this.relatorioRepositorio = relatorioRepositorio;
+        this.arquivoDriveRepositorio = arquivoDriveRepositorio;
         this.missaoRepositorio = missaoRepositorio;
         this.triboRepositorio = triboRepositorio;
         this.pessoaRepositorio = pessoaRepositorio;
@@ -146,6 +150,18 @@ public class RelatorioService {
                 pessoa.ocorrencia(), pessoa.categoria(), pessoa.dados())).toList();
         if (!novasPessoas.isEmpty()) pessoaRepositorio.saveAllAndFlush(novasPessoas);
         return RespostaRelatorio.de(relatorio);
+    }
+
+    @Transactional
+    public void excluir(UUID id, HttpServletRequest requisicao) {
+        acessoService.exigirAdministradorSistema(requisicao);
+        Relatorio relatorio = relatorioRepositorio.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Relatório não encontrado."));
+        if (!arquivoDriveRepositorio.findAllByRelatorioId(id).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A exclusão automática não está disponível para relatórios com arquivos legados no Google Drive.");
+        }
+        relatorioRepositorio.delete(relatorio);
     }
 
     @Transactional
