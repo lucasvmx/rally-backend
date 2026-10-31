@@ -49,6 +49,9 @@ public class InterpretadorDeRegras {
     private static final Pattern LINK_FORMULARIO = Pattern.compile(
             "https?://(?:forms\\.gle/[^\\s<>]+|docs\\.google\\.com/forms/[^\\s<>]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern CABECALHO_MISSAO = Pattern.compile("(?m)^\\s*(?:➡️|➡|➜|→)\\s*");
+    private static final Pattern PREFIXO_DIA = Pattern.compile(
+            "^(?:segunda|terça|terca|quarta|quinta|sexta)(?:-feira)?(?=\\s*(?:\\||$))\\s*(?:\\|\\s*)?|^(?:sábado|sabado|domingo)(?=\\s*(?:\\||$))\\s*(?:\\|\\s*)?",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private final RestClient.Builder restClientBuilder;
     private final ObjectMapper objectMapper;
@@ -346,6 +349,19 @@ public class InterpretadorDeRegras {
         String descricao = texto(regra, "descricao", "regras_resumo", "resumo");
         LocalDate inicio = data(regra, "data_inicio", "inicio");
         LocalDate fim = data(regra, "data_fim", "fim");
+        if (inicio != null && inicio.equals(fim)) {
+            String dia = switch (inicio.getDayOfWeek()) {
+                case MONDAY -> "Segunda-Feira";
+                case TUESDAY -> "Terça-Feira";
+                case WEDNESDAY -> "Quarta-Feira";
+                case THURSDAY -> "Quinta-Feira";
+                case FRIDAY -> "Sexta-Feira";
+                case SATURDAY -> "Sábado";
+                case SUNDAY -> "Domingo";
+            };
+            String titulo = nome == null ? "" : PREFIXO_DIA.matcher(nome).replaceFirst("").trim();
+            nome = titulo.isEmpty() ? dia : dia + " | " + titulo;
+        }
         Instant prazo = dataHora(regra, fim);
         if (nome == null || nome.length() > 180) {
             throw new IllegalArgumentException("cada missão precisa de um nome não vazio com até 180 caracteres.");
@@ -615,14 +631,18 @@ public class InterpretadorDeRegras {
                 retornar rally, nome deve ter até 180 caracteres e data_inicio deve ser anterior ou igual a data_fim.
 
                 Crie uma missão por atividade e preserve missões distintas, inclusive as relâmpago. Preencha nome com
-                um título curto e claro e descricao com a atividade e suas instruções; sintetize esses textos a partir
+                o dia da semana e, quando houver nome da atividade no recado, acrescente " | " e esse nome. Se não
+                houver nome, use somente o dia da semana; não invente um título. Use, por exemplo,
+                "Segunda-Feira | Missão Esportes - Futsal" ou "Segunda-Feira". Quando não for possível determinar
+                o dia, use o nome informado ou um título curto. Preencha descricao com a atividade e suas instruções;
+                sintetize a descrição a partir
                 do recado, sem pedir que a pessoa os escreva. Inclua todas as chaves do formato. Não deixe null um dado
                 que possa ser inferido do recado ou das premissas abaixo. Use null só para um fato realmente ausente e
                 que não tenha um padrão seguro no sistema. Use arrays vazios quando não houver itens.
 
                 Registre em ambiguidades apenas contradições ou fatos essenciais que não possam ser inferidos e exijam
                 uma decisão humana. Não liste dúvidas sobre preferências, prazo de envio, nome ou descrição: prazo é
-                opcional, e nome e descrição devem ser redigidos por você. Se o recado não disser a pontuação, deixe
+                opcional, e nome e descrição seguem os padrões acima. Se o recado não disser a pontuação, deixe
                 regras_pontuacao vazio; o cadastro começa com zero talentos por segurança e a pontuação pode ser ajustada
                 depois. Se um dado tiver um padrão definido neste contrato, aplique o padrão sem registrar ambiguidade.
                 Agrupe em uma única observação as condições ainda não resolvidas da mesma missão; não transforme cada
@@ -637,7 +657,12 @@ public class InterpretadorDeRegras {
                 Não use ISO 8601 nem "T". Referência: %s. Complete dia/mês sem ano com %s; não infira dia ou mês
                 ausentes; não registre o ano completado como ambiguidade. Preserve o dia e a hora informados no recado;
                 não converta as datas para outro fuso horário. Uma missão com várias datas pode usar o período entre a
-                primeira e a última. Se as datas da missão não estiverem no recado, use o período do rali quando
+                primeira e a última. Quando o recado indicar dias da semana específicos dentro de um período, associe
+                cada atividade ao dia correspondente do calendário e use essa data tanto em data_inicio como em
+                data_fim; não use o período inteiro para cada atividade. Por exemplo, de 18 a 24/05/2026, segunda,
+                quarta e sexta correspondem respectivamente a 18, 20 e 22/05/2026. Calcule usando o ano informado ou
+                o ano atual quando omitido. Se houver mais de uma data possível para o mesmo dia, não escolha uma
+                arbitrariamente e registre a ambiguidade. Se as datas da missão não estiverem no recado, use o período do rali quando
                 esse período estiver explícito; caso contrário deixe as datas null para o fluxo preencher pelo rali
                 associado, sem criar uma ambiguidade. Só use um prazo se estiver explícito; null é válido.
 

@@ -24,6 +24,43 @@ import static org.mockito.Mockito.when;
 
 class InterpretadorDeRegrasTest {
     @Test
+    void incluiDiaDaDataNoNomeSemDuplicarPrefixoEPermiteNomeAusente() throws Exception {
+        JsonNode respostaIa = resposta("""
+                {"rally":null,"missoes":[
+                {"nome":"Missão Esportes - Futsal","descricao":"Jogar futsal","data_inicio":"18/05/2026","data_fim":"18/05/2026"},
+                {"nome":null,"descricao":"Realizar atividade","data_inicio":"20/05/2026","data_fim":"20/05/2026"},
+                {"nome":"Sexta-Feira | Ação","descricao":"Realizar ação","data_inicio":"22/05/2026","data_fim":"22/05/2026"},
+                {"nome":"Atividade semanal","descricao":"Realizar atividade","data_inicio":"18/05/2026","data_fim":"24/05/2026"}
+                ],"ambiguidades":[]}
+                """);
+        RestClient.Builder builder = mock(RestClient.Builder.class);
+        RestClient client = mock(RestClient.class);
+        RestClient.RequestBodyUriSpec uriSpec = mock(RestClient.RequestBodyUriSpec.class);
+        RestClient.RequestBodySpec bodySpec = mock(RestClient.RequestBodySpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        when(builder.clone()).thenReturn(builder);
+        when(builder.requestFactory(any())).thenReturn(builder);
+        when(builder.baseUrl(anyString())).thenReturn(builder);
+        when(builder.build()).thenReturn(client);
+        when(client.post()).thenReturn(uriSpec);
+        when(uriSpec.uri(anyString())).thenReturn(bodySpec);
+        when(bodySpec.contentType(any(MediaType.class))).thenReturn(bodySpec);
+        when(bodySpec.header(anyString(), anyString())).thenReturn(bodySpec);
+        doReturn(bodySpec).when(bodySpec).body(any(Object.class));
+        when(bodySpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(eq(JsonNode.class))).thenReturn(respostaIa);
+        InterpretadorDeRegras interpretador = new InterpretadorDeRegras(builder, new ObjectMapper(),
+                new ValidacaoConfiguracaoMissaoService(new RegrasPontuacaoService()),
+                "https://openrouter.example", "chave-teste", "modelo-teste", "");
+
+        var missoes = interpretador.interpretarMissoes("Missões de 18 a 24/05/2026").missoes();
+
+        assertEquals(List.of("Segunda-Feira | Missão Esportes - Futsal", "Quarta-Feira",
+                        "Sexta-Feira | Ação", "Atividade semanal"),
+                missoes.stream().map(missao -> missao.nome()).toList());
+    }
+
+    @Test
     void corrigeUmaRespostaQueUsaCampoPessoaComoMetricaQuantitativa() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
         JsonNode respostaInvalida = resposta("""
