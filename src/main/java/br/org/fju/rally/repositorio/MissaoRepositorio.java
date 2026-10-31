@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface MissaoRepositorio extends JpaRepository<Missao, UUID> {
+    long countByRallyId(UUID rallyId);
+
     @Query("select m from Missao m left join fetch m.rally")
     List<Missao> buscarTodasComRally();
 

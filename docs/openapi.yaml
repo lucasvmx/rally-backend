@@ -1097,6 +1097,43 @@ paths:
               schema:
                 $ref: '#/components/schemas/Erro'
 
+  /api/v1/dashboard:
+    get:
+      tags: [Dados do Rally]
+      summary: Consulta indicadores do dashboard de um rally
+      description: >-
+        Seleciona o rally informado ou, sem rally_id, o rally ativo com data de
+        início mais recente na data atual de America/Sao_Paulo. Sem rally ativo,
+        retorna rally nulo, contagens zeradas e ranking vazio. Os indicadores de
+        relatórios respeitam o escopo da conta: coordenadores veem sua tribo ou
+        nação, enquanto assistentes e administradores veem todas. O ranking é
+        global, como no placar, e apresenta até as cinco primeiras tribos.
+        As quantidades de pessoas são somas dos relatórios aprovados, não uma
+        contagem de pessoas distintas.
+      parameters:
+        - name: rally_id
+          in: query
+          required: false
+          description: UUID do rally a consultar, inclusive após seu encerramento.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Indicadores do rally e ranking das tribos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaDashboard'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
   /api/v1/placar:
     get:
       tags: [Dados do Rally]
@@ -2623,6 +2660,52 @@ components:
         justificativa:
           type: string
           nullable: true
+    RespostaDashboard:
+      type: object
+      required: [rally, missoes, relatorios, ranking]
+      properties:
+        rally:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/RespostaRally'
+        missoes:
+          type: object
+          required: [total]
+          properties:
+            total:
+              type: integer
+              format: int64
+              description: Total de missões do rally selecionado.
+        relatorios:
+          type: object
+          required: [total, enviados, aprovados, rejeitados, pessoas_aprovadas, novos_afastados_aprovados]
+          properties:
+            total:
+              type: integer
+              format: int64
+            enviados:
+              type: integer
+              format: int64
+              description: Relatórios com status ENVIADO, pendentes de revisão.
+            aprovados:
+              type: integer
+              format: int64
+            rejeitados:
+              type: integer
+              format: int64
+            pessoas_aprovadas:
+              type: integer
+              format: int64
+              description: Soma de quantidade_pessoas dos relatórios aprovados.
+            novos_afastados_aprovados:
+              type: integer
+              format: int64
+              description: Soma de quantidade_novos_afastados dos relatórios aprovados.
+        ranking:
+          type: array
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/RespostaPlacar'
     RespostaPlacar:
       type: object
       required: [posicao, tribo_id, tribo_nome, nacao_nome, pontos, pessoas_aprovadas, relatorios_aprovados, bonus_nacional]
