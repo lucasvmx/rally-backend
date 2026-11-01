@@ -17,7 +17,8 @@ public record RespostaPontuacaoManual(
         int pontosPorTribo,
         int totalTribosBeneficiadas,
         String registradoPor,
-        Instant registradaEm
+        Instant registradaEm,
+        UUID missaoId
 ) {
     public static RespostaPontuacaoManual de(PontuacaoManual pontuacao) {
         return new RespostaPontuacaoManual(
@@ -32,6 +33,7 @@ public record RespostaPontuacaoManual(
                 pontuacao.getPontosPorTribo(),
                 pontuacao.getTribosDestinatarias().size(),
                 pontuacao.getRegistradoPor(),
-                pontuacao.getRegistradaEm());
+                pontuacao.getRegistradaEm(),
+                pontuacao.getMissao() == null ? null : pontuacao.getMissao().getId());
     }
 }

@@ -1,6 +1,9 @@
 package br.org.fju.rally.servico;
 
 import br.org.fju.rally.api.RequisicaoPontuacaoManual;
+import br.org.fju.rally.api.RequisicaoPontuacaoTribo;
+import br.org.fju.rally.dominio.Missao;
+import br.org.fju.rally.repositorio.MissaoRepositorio;
 import br.org.fju.rally.api.RespostaPontuacaoManual;
 import br.org.fju.rally.dominio.PontuacaoManual;
 import br.org.fju.rally.dominio.Rally;
@@ -30,15 +33,17 @@ public class PontuacaoManualService {
     private final RallyRepositorio rallies;
     private final TriboRepositorio tribos;
     private final AcessoService acesso;
+    private final MissaoRepositorio missoes;
 
     public PontuacaoManualService(PontuacaoManualRepositorio pontuacoes,
                                   RallyRepositorio rallies,
                                   TriboRepositorio tribos,
-                                  AcessoService acesso) {
+                                  AcessoService acesso, MissaoRepositorio missoes) {
         this.pontuacoes = pontuacoes;
         this.rallies = rallies;
         this.tribos = tribos;
         this.acesso = acesso;
+        this.missoes = missoes;
     }
 
     @Transactional(readOnly = true)
@@ -88,6 +93,36 @@ public class PontuacaoManualService {
                 UUID.randomUUID(), rally, triboChamada.getNacao(), triboChamada,
                 dados.atividade().trim(), pontos, responsavel,
                 Instant.now(), destinatarias);
+        return RespostaPontuacaoManual.de(pontuacoes.save(registro));
+    }
+
+    @Transactional
+    public RespostaPontuacaoManual registrarParaTribo(RequisicaoPontuacaoTribo dados,
+                                                      HttpServletRequest requisicao) {
+        acesso.exigirAssistente(requisicao);
+        Rally rally = rallyAtual();
+        if (rally == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Não há um Rally ativo para registrar esta pontuação.");
+        }
+        Tribo tribo = tribos.findById(dados.triboId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
+        if (!tribo.getNacao().getId().equals(dados.nacaoId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A tribo precisa pertencer à nação selecionada.");
+        }
+        Missao missao = null;
+        if (dados.missaoId() != null) {
+            missao = missoes.findById(dados.missaoId())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Missão não encontrada."));
+            if (!missao.getRally().getId().equals(rally.getId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A missão precisa pertencer ao Rally ativo.");
+            }
+        }
+        String responsavel = requisicao.getUserPrincipal() instanceof Authentication autenticacao
+                ? autenticacao.getName() : "usuario autenticado";
+        if (responsavel == null || responsavel.isBlank()) responsavel = "usuario autenticado";
+        PontuacaoManual registro = new PontuacaoManual(UUID.randomUUID(), rally, tribo.getNacao(), tribo,
+                dados.justificativa().trim(), dados.pontos(), responsavel, Instant.now(), List.of(tribo));
+        registro.associarMissao(missao);
         return RespostaPontuacaoManual.de(pontuacoes.save(registro));
     }
 

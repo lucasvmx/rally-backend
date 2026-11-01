@@ -38,6 +38,10 @@ public class PontuacaoManual {
     @JoinColumn(name = "tribo_chamada_id", nullable = false)
     private Tribo triboChamada;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "missao_id")
+    private Missao missao;
+
     @Column(name = "atividade", nullable = false, length = 180)
     private String atividade;
 
@@ -68,5 +72,9 @@ public class PontuacaoManual {
         this.registradoPor = registradoPor;
         this.registradaEm = registradaEm;
         this.tribosDestinatarias.addAll(tribosDestinatarias);
+    }
+
+    public void associarMissao(Missao missao) {
+        this.missao = missao;
     }
 }

@@ -245,6 +245,12 @@ public class RallyController {
         return pontuacaoManualService.registrar(corpo, requisicao);
     }
 
+    @PostMapping("/pontuacoes-manuais/tribo")
+    public RespostaPontuacaoManual registrarPontuacaoTribo(
+            @Valid @RequestBody RequisicaoPontuacaoTribo corpo, HttpServletRequest requisicao) {
+        return pontuacaoManualService.registrarParaTribo(corpo, requisicao);
+    }
+
     @PostMapping("/regras/interpretar")
     public RespostaInterpretacao interpretar(@Valid @RequestBody RequisicaoInterpretacao corpo,
                                               HttpServletRequest requisicao) {

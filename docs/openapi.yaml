@@ -1239,6 +1239,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Erro'
 
+  /api/v1/pontuacoes-manuais/tribo:
+    post:
+      tags: [Dados do Rally]
+      summary: Adiciona pontos manualmente a uma tribo
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Registra pontos para
+        a tribo selecionada no Rally ativo, com justificativa obrigatória e
+        missão opcional. A tribo deve pertencer à nação informada.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoPontuacaoManualTribo'
+      responses:
+        '200':
+          description: Pontuação manual registrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaPontuacaoManual'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: Não há um Rally ativo para registrar a pontuação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
   /api/v1/regras/interpretar:
     post:
       tags: [Regras]
@@ -2752,6 +2790,29 @@ components:
           maximum: 1000000
           nullable: true
           description: Quando omitido ou nulo, o serviço usa o valor padrão de 7000 pontos.
+    RequisicaoPontuacaoManualTribo:
+      type: object
+      required: [nacao_id, tribo_id, pontos, justificativa]
+      properties:
+        nacao_id:
+          type: string
+          format: uuid
+        tribo_id:
+          type: string
+          format: uuid
+        pontos:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+        justificativa:
+          type: string
+          minLength: 1
+          maxLength: 180
+          description: Não pode ser vazia ou composta apenas por espaços.
+        missao_id:
+          type: string
+          format: uuid
+          nullable: true
     RespostaPontuacaoManual:
       type: object
       required:
@@ -2788,6 +2849,10 @@ components:
           type: string
         atividade:
           type: string
+        missao_id:
+          type: string
+          format: uuid
+          nullable: true
         pontos_por_tribo:
           type: integer
         total_tribos_beneficiadas:
