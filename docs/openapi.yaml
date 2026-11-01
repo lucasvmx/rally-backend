@@ -2442,6 +2442,11 @@ components:
           type: integer
         bonificacao_a_cada_cinco_novos:
           type: integer
+          deprecated: true
+          description: >-
+            Campo legado preservado na resposta; seu valor não é usado para
+            calcular pontuação. Bônus por quantidade são definidos em
+            regras_pontuacao com uma regra A_CADA.
         meta_nacional:
           type: integer
         bonificacao_meta_nacional:
@@ -2976,6 +2981,11 @@ components:
           nullable: true
           minimum: -1000000
           maximum: 1000000
+          deprecated: true
+          description: >-
+            Campo legado aceito e armazenado por compatibilidade, mas não
+            gera pontuação nem cria uma regra. Para conceder bônus por
+            quantidade, configure uma regra A_CADA em regras_pontuacao.
         meta_nacional:
           type: integer
           nullable: true

@@ -278,9 +278,6 @@ public class RegrasPontuacaoService {
                 "tipo", "POR_PESSOA", "categoria", "INTEGRANTE", "pontos", valor(dados.pontosPorPessoa())));
         if (valor(dados.pontosPorNovoAfastado()) > 0) regras.add(Map.of(
                 "tipo", "POR_PESSOA", "categoria", "NOVO_AFASTADO", "pontos", valor(dados.pontosPorNovoAfastado())));
-        if (valor(dados.bonificacaoACadaCincoNovos()) > 0) regras.add(Map.of(
-                "tipo", "A_CADA", "campo", "novos_afastados", "quantidade", 5,
-                "pontos", dados.bonificacaoACadaCincoNovos(), "escopo", "TRIBO"));
         if (valor(dados.metaNacional()) > 0 && valor(dados.bonificacaoMetaNacional()) > 0) regras.add(Map.of(
                 "tipo", "META", "campo", "novo_ou_afastado".equals(dados.tipoPessoa())
                     ? "novos_afastados" : "integrantes",
@@ -295,8 +292,7 @@ public class RegrasPontuacaoService {
         int quantidadeNovos = pessoas.isEmpty() ? relatorio.getQuantidadeNovosAfastados() : (int) pessoas.stream()
                 .filter(pessoa -> categoriaNovo(normalizarCategoria(pessoa.getCategoria()))).count();
         long pontos = (long) quantidadePessoas * relatorio.getMissao().getPontosPorPessoa()
-                + (long) quantidadeNovos * relatorio.getMissao().getPontosPorNovoAfastado()
-                + (long) (quantidadeNovos / 5) * relatorio.getMissao().getBonificacaoACadaCincoNovos();
+                + (long) quantidadeNovos * relatorio.getMissao().getPontosPorNovoAfastado();
         return Math.toIntExact(pontos);
     }
 

@@ -696,7 +696,9 @@ public class InterpretadorDeRegras {
                 campo ou campo_base.
                 Use apenas valores e condições do recado. Para presença em reunião, pontue somente quando houver valor explícito.
                 Se integrantes, novos, afastados ou convidados tiverem pontuações diferentes, crie regras POR_PESSOA
-                separadas; não invente bônus nem confunda a presença do integrante com a do convidado.
+                separadas; não confunda a presença do integrante com a do convidado. Crie bônus A_CADA apenas
+                quando o recado especificar esse bônus, sua quantidade e seus pontos; não presuma um bônus
+                por novos ou afastados nem uma quantidade padrão. Se não houver bônus, não crie essa regra.
 
                 O escopo padrão é TRIBO, calculado separadamente por tribo. Use NACAO somente para agregação nacional
                 explícita. A pontuação nacional é somente a soma dos totais das tribos; não há saldo nacional separado.
