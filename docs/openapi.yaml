@@ -429,6 +429,9 @@ paths:
         início de cada missão não pode ser posterior à data de fim. As regras de
         pontuação e campos do relatório podem ser definidos por missão; campos
         podem pertencer ao escopo RELATORIO ou PESSOA, com RELATORIO como padrão.
+        Nesta operação em lote a foto é sempre exigida, independentemente do
+        valor de exige_foto; para configurar essa opção, crie a missão pela rota
+        POST /api/v1/rallies/{rallyId}/missoes.
         Quando regras_pontuacao é omitido ou vazio, são convertidos os campos legados
         de pontos em regras. link_google_forms é
         opcional; quando informado, deve ser um link HTTPS do Google Forms
@@ -531,6 +534,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Erro'
+
+  /api/v1/rallies/{rallyId}/missoes:
+    post:
+      tags: [Dados do Rally]
+      summary: Cria uma missão manualmente em um rally
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Recebe a configuração
+        de uma missão vinculada a um rally existente. As datas da missão devem
+        estar dentro do período do rally e a data de início não pode ser posterior
+        à data de fim. É possível configurar regras de pontuação e campos do
+        relatório, inclusive exige_foto; quando regras_pontuacao é omitido ou vazio, os campos legados
+        de pontos são convertidos em regras. O link_google_forms opcional deve
+        ser HTTPS, de forms.gle ou docs.google.com/forms, com caminho, sem porta
+        explícita nem usuário na URL. A autenticação aceita sessão Spring Security
+        local, OAuth2 Login Google ou JWT emitido pelo backend em Authorization:
+        Bearer. O papel vem da identidade autenticada. A proteção CSRF também se
+        aplica; obtenha o token em /api/v1/autenticacao/csrf e envie X-XSRF-TOKEN.
+      parameters:
+        - name: rallyId
+          in: path
+          required: true
+          description: Identificador UUID do rally existente.
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DadosMissao'
+      responses:
+        '201':
+          description: Missão criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaMissao'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
 
   /api/v1/rallies/{id}:
     delete:

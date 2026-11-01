@@ -115,6 +115,13 @@ public class RallyController {
         return missaoService.criarRally(corpo, requisicao);
     }
 
+    @PostMapping("/rallies/{rallyId}/missoes")
+    @ResponseStatus(HttpStatus.CREATED)
+    public RespostaMissao criarMissaoManual(@PathVariable UUID rallyId, @Valid @RequestBody DadosMissao corpo,
+                                            HttpServletRequest requisicao) {
+        return missaoService.criarManual(rallyId, corpo, requisicao);
+    }
+
     @DeleteMapping("/rallies/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void excluirRally(@PathVariable UUID id, HttpServletRequest requisicao) {

@@ -82,9 +82,18 @@ public class MissaoService {
             rally = rallies.saveAndFlush(new Rally(UUID.randomUUID(), dadosRally.nome().trim(),
                     dadosRally.dataInicio(), dadosRally.dataFim()));
         }
-        List<Missao> novas = corpo.missoes().stream().map(dados -> converter(dados, rally)).toList();
+        List<Missao> novas = corpo.missoes().stream().map(dados -> converter(dados, rally, true)).toList();
         List<Missao> salvas = missoes.saveAllAndFlush(novas);
         return salvas.stream().map(RespostaMissao::de).toList();
+    }
+
+    @Transactional
+    public RespostaMissao criarManual(UUID rallyId, DadosMissao dados, HttpServletRequest requisicao) {
+        acesso.exigirAssistente(requisicao);
+        Rally rally = rallies.findById(rallyId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado."));
+        validarDatasMissoesNoRally(rally, List.of(dados));
+        return RespostaMissao.de(missoes.saveAndFlush(converter(dados, rally, dados.exigeFoto())));
     }
 
     @Transactional
@@ -113,7 +122,7 @@ public class MissaoService {
         rallies.delete(rally);
     }
 
-    private Missao converter(DadosMissao dados, Rally rally) {
+    private Missao converter(DadosMissao dados, Rally rally, boolean exigeFoto) {
         if (dados.dataInicio() == null || dados.dataFim() == null) {
             throw erro("Informe as datas de início e fim de todas as missões.");
         }
@@ -129,7 +138,7 @@ public class MissaoService {
         return new Missao(UUID.randomUUID(), dados.nome().trim(), dados.descricao(), dados.dataInicio(), dados.dataFim(),
                 dados.prazoEnvio(), valor(dados.pontosPorPessoa()), valor(dados.pontosPorNovoAfastado()),
                 valor(dados.bonificacaoACadaCincoNovos()), valor(dados.metaNacional()),
-                valor(dados.bonificacaoMetaNacional()), true,
+                valor(dados.bonificacaoMetaNacional()), exigeFoto,
                 dados.tipoPessoa() == null ? "integrante" : dados.tipoPessoa(), link,
                 "PUBLICADA", 1, rally, configuracao.regrasPontuacao(), configuracao.camposRelatorio());
     }
