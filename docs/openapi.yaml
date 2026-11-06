@@ -399,6 +399,173 @@ paths:
         '404':
           $ref: '#/components/responses/NaoEncontrado'
 
+  /api/v1/tribos/{triboId}/integrantes:
+    parameters:
+      - $ref: '#/components/parameters/GestaoTriboId'
+    get:
+      tags: [Dados do Rally]
+      summary: Lista integrantes de uma tribo
+      description: >-
+        Exige autenticação e acesso à tribo. Assistentes e administradores
+        acessam todas as tribos; coordenadores acessam somente as tribos do
+        respectivo escopo. A lista é ordenada por nome.
+      responses:
+        '200':
+          description: Integrantes cadastrados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaIntegranteTribo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+    post:
+      tags: [Dados do Rally]
+      summary: Cadastra um integrante na tribo
+      description: >-
+        Exige autenticação, acesso à tribo e proteção CSRF. O nome é aparado;
+        o título é obrigatório e o papel é opcional.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DadosIntegranteTribo'
+      responses:
+        '201':
+          description: Integrante cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaIntegranteTribo'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/tribos/{triboId}/integrantes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/GestaoTriboId'
+      - name: id
+        in: path
+        required: true
+        description: Identificador do integrante da tribo.
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [Dados do Rally]
+      summary: Atualiza um integrante da tribo
+      description: >-
+        Exige autenticação, acesso à tribo e proteção CSRF. O integrante deve
+        pertencer à tribo identificada.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DadosIntegranteTribo'
+      responses:
+        '200':
+          description: Integrante atualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaIntegranteTribo'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+    delete:
+      tags: [Dados do Rally]
+      summary: Exclui um integrante da tribo
+      description: >-
+        Exige autenticação, acesso à tribo e proteção CSRF. O integrante deve
+        pertencer à tribo identificada.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      responses:
+        '204':
+          description: Integrante excluído; sem corpo de resposta
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/tribos/{triboId}/relatorios:
+    get:
+      tags: [Relatórios]
+      summary: Lista relatórios da tribo para consulta
+      description: >-
+        Exige autenticação e acesso à tribo. Coordenadores de tribo veem apenas
+        os relatórios enviados por sua própria conta; relatórios antigos ou
+        públicos sem autoria identificada não são atribuídos a ela. Outros
+        papéis autorizados veem os relatórios da tribo. A lista é ordenada por
+        envio decrescente e esta operação é somente leitura.
+      parameters:
+        - $ref: '#/components/parameters/GestaoTriboId'
+      responses:
+        '200':
+          description: Relatórios visíveis para a conta
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RespostaRelatorio'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
+  /api/v1/tribos/{triboId}/informacoes:
+    get:
+      tags: [Dados do Rally]
+      summary: Consulta indicadores da tribo no mês atual
+      description: >-
+        Exige autenticação e acesso à tribo. O mês e o dia atual usam o fuso
+        America/Sao_Paulo. A contagem conjunta de jovens soma os valores de
+        relatórios não rejeitados enviados no mês. A taxa de cumprimento é o
+        percentual de missões iniciadas desde o primeiro dia do mês até hoje
+        que têm ao menos um relatório não rejeitado da tribo, sobre o total de
+        missões iniciadas nesse intervalo; é null quando não há missões.
+      parameters:
+        - $ref: '#/components/parameters/GestaoTriboId'
+      responses:
+        '200':
+          description: Indicadores da tribo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InformacoesTribo'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+
   /api/v1/missoes:
     get:
       tags: [Dados do Rally]
@@ -1961,6 +2128,14 @@ components:
         Google. O cookie é HttpOnly, SameSite=Lax e Secure conforme a
         configuração da sessão; as rotas privadas exigem sessão ou JWT.
   parameters:
+    GestaoTriboId:
+      name: triboId
+      in: path
+      required: true
+      description: Identificador da tribo.
+      schema:
+        type: string
+        format: uuid
     CabecalhoCsrf:
       name: X-XSRF-TOKEN
       in: header
@@ -2404,6 +2579,54 @@ components:
           format: uuid
         nacao_nome:
           type: string
+    DadosIntegranteTribo:
+      type: object
+      required: [nome, titulo]
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: Nome não vazio; espaços nas extremidades são removidos.
+        titulo:
+          type: string
+          enum: [INTEGRANTE, CPO, COLABORADOR, OBREIRO]
+        papel:
+          type: string
+          nullable: true
+          enum: [COORDENADOR_TRIBO, AUXILIAR_TRIBO, null]
+          description: Papel na tribo, ou null quando não houver.
+    RespostaIntegranteTribo:
+      allOf:
+        - $ref: '#/components/schemas/DadosIntegranteTribo'
+        - type: object
+          required: [id, papel]
+          properties:
+            id:
+              type: string
+              format: uuid
+    InformacoesTribo:
+      type: object
+      required: [integrantes, jovens_novos_afastados, missoes_periodo, missoes_com_relatorio, taxa_cumprimento]
+      properties:
+        integrantes:
+          type: integer
+          format: int64
+        jovens_novos_afastados:
+          type: integer
+          format: int64
+          description: Soma conjunta, sem distinção entre novos e afastados.
+        missoes_periodo:
+          type: integer
+          format: int64
+        missoes_com_relatorio:
+          type: integer
+          format: int64
+        taxa_cumprimento:
+          type: number
+          format: double
+          nullable: true
+          description: Percentual entre 0 e 100, ou null quando não há missões no período.
     RespostaMissao:
       type: object
       required:

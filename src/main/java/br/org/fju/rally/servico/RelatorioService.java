@@ -67,6 +67,8 @@ public class RelatorioService {
         return relatorioRepositorio.buscarComReferencias().stream()
                 .filter(relatorio -> acesso.podeAcessarTribo(relatorio.getTribo().getId(),
                         relatorio.getTribo().getNacao().getId()))
+                .filter(relatorio -> acesso.papel() != PapelUsuario.COORDENADOR_TRIBO
+                        || acesso.usuarioId() != null && acesso.usuarioId().equals(relatorio.getAutorId()))
                 .map(RespostaRelatorio::de)
                 .toList();
     }
@@ -104,7 +106,7 @@ public class RelatorioService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "O coordenador só pode enviar relatório para sua tribo ou nação.");
         }
-        return criarPublico(corpo, fotoValidadaNoEnvio);
+        return criarInterno(corpo, fotoValidadaNoEnvio, acesso.usuarioId());
     }
 
     @Transactional
@@ -114,6 +116,10 @@ public class RelatorioService {
 
     @Transactional
     public RespostaRelatorio criarPublico(RequisicaoRelatorio corpo, boolean fotoValidadaNoEnvio) {
+        return criarInterno(corpo, fotoValidadaNoEnvio, null);
+    }
+
+    private RespostaRelatorio criarInterno(RequisicaoRelatorio corpo, boolean fotoValidadaNoEnvio, UUID autorId) {
         Missao missao = missaoRepositorio.buscarParaEnvio(corpo.missaoId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Missão não encontrada."));
         Tribo tribo = triboRepositorio.findById(corpo.triboId())
@@ -144,6 +150,7 @@ public class RelatorioService {
         boolean atrasado = missao.getPrazoEnvio() != null && agora.isAfter(missao.getPrazoEnvio());
         Relatorio relatorio = new Relatorio(relatorioId, missao, tribo, integrantesAceitos, novosAceitos,
                 corpo.observacoes(), agora, atrasado, "ENVIADO", 0, null, dados, avisos);
+        relatorio.definirAutorId(autorId);
         relatorioRepositorio.saveAndFlush(relatorio);
         List<PessoaPontuada> novasPessoas = rascunhos.stream().map(pessoa -> new PessoaPontuada(
                 UUID.randomUUID(), missao, relatorio, pessoa.nome(), pessoa.nomeNormalizado(),

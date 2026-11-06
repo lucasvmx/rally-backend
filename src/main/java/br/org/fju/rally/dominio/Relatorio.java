@@ -33,6 +33,11 @@ public class Relatorio {
     @JoinColumn(name = "tribo_id", nullable = false)
     private Tribo tribo;
 
+    @Column(name = "autor_id")
+    private UUID autorId;
+
+    public void definirAutorId(UUID autorId) { this.autorId = autorId; }
+
     @Column(name = "quantidade_pessoas", nullable = false)
     private int quantidadePessoas;
     @Column(name = "quantidade_novos_afastados", nullable = false)

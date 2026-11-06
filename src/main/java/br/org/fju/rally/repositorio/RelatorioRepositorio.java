@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public interface RelatorioRepositorio extends JpaRepository<Relatorio, UUID> {
@@ -25,6 +27,18 @@ public interface RelatorioRepositorio extends JpaRepository<Relatorio, UUID> {
             group by r.status
             """)
     List<ResumoDashboard> resumoDashboard(UUID rallyId, boolean privilegiado, UUID triboId, UUID nacaoId);
+
+    @Query("select r from Relatorio r join fetch r.missao join fetch r.tribo t join fetch t.nacao where t.id = :triboId order by r.enviadoEm desc")
+    List<Relatorio> buscarPorTribo(UUID triboId);
+
+    @Query("select r from Relatorio r join fetch r.missao join fetch r.tribo t join fetch t.nacao where t.id = :triboId and r.autorId = :autorId order by r.enviadoEm desc")
+    List<Relatorio> buscarPorTriboEAutor(UUID triboId, UUID autorId);
+
+    @Query("select coalesce(sum(r.quantidadeNovosAfastados), 0) from Relatorio r where r.tribo.id = :triboId and r.status <> 'REJEITADO' and r.enviadoEm >= :inicio and r.enviadoEm < :fim")
+    long somarNovosNoPeriodo(UUID triboId, Instant inicio, Instant fim);
+
+    @Query("select count(distinct m.id) from Relatorio r join r.missao m where r.tribo.id = :triboId and r.status <> 'REJEITADO' and m.dataInicio >= :inicio and m.dataInicio <= :fim")
+    long contarMissoesRelatadas(UUID triboId, LocalDate inicio, LocalDate fim);
 
     List<Relatorio> findAllByOrderByEnviadoEmDesc();
 
