@@ -12,5 +12,11 @@ public record RequisicaoPontuacaoTribo(
         @NotNull UUID triboId,
         @NotNull @Min(1) @Max(1000000) Integer pontos,
         @NotBlank @Size(max = 180) String justificativa,
-        UUID missaoId
-) {}
+        UUID missaoId,
+        UUID rallyId
+) {
+    public RequisicaoPontuacaoTribo(UUID nacaoId, UUID triboId, Integer pontos,
+                                    String justificativa, UUID missaoId) {
+        this(nacaoId, triboId, pontos, justificativa, missaoId, null);
+    }
+}

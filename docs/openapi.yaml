@@ -1225,15 +1225,24 @@ paths:
   /api/v1/pontuacoes-manuais:
     get:
       tags: [Dados do Rally]
-      summary: Lista pontuações manuais do Rally ativo
+      summary: Lista pontuações manuais de um Rally
       description: >-
-        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Consulta os registros
-        do Rally que contém a data atual em America/Sao_Paulo. Se não houver
-        Rally ativo, retorna 409. registrada_em é um instante serializado em
-        UTC com Z.
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Com rally_id, consulta
+        os registros daquele Rally, inclusive fora do período. Sem rally_id,
+        consulta o Rally que contém a data atual em America/Sao_Paulo; se não
+        houver Rally ativo, retorna 409. registrada_em é um instante serializado
+        em UTC com Z.
+      parameters:
+        - name: rally_id
+          in: query
+          required: false
+          description: UUID do Rally cujas pontuações manuais serão consultadas.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
-          description: Pontuações manuais do Rally ativo
+          description: Pontuações manuais do Rally selecionado
           content:
             application/json:
               schema:
@@ -1244,8 +1253,10 @@ paths:
           $ref: '#/components/responses/NaoAutenticado'
         '403':
           $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
         '409':
-          description: Não há um Rally ativo para consultar
+          description: Não há Rally ativo e rally_id não foi informado
           content:
             application/json:
               schema:
@@ -1255,10 +1266,11 @@ paths:
       summary: Registra uma pontuação manual
       description: >-
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Registra a bonificação
-        para a nação e a tribo informadas no Rally que contém a data atual em
-        America/Sao_Paulo. pontos_por_tribo é opcional e assume o valor padrão
-        do serviço quando omitido ou nulo. A resposta inclui registrada_em
-        como instante UTC serializado com Z.
+        para a nação e a tribo informadas no Rally indicado por rally_id.
+        Quando rally_id é omitido ou nulo, usa o Rally que contém a data atual
+        em America/Sao_Paulo. pontos_por_tribo é opcional e assume o valor
+        padrão do serviço quando omitido ou nulo. A resposta inclui
+        registrada_em como instante UTC serializado com Z.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -1283,7 +1295,7 @@ paths:
         '404':
           $ref: '#/components/responses/NaoEncontrado'
         '409':
-          description: Não há um Rally ativo para registrar a pontuação
+          description: Não há Rally ativo e rally_id não foi informado
           content:
             application/json:
               schema:
@@ -1295,8 +1307,10 @@ paths:
       summary: Adiciona pontos manualmente a uma tribo
       description: >-
         Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Registra pontos para
-        a tribo selecionada no Rally ativo, com justificativa obrigatória e
-        missão opcional. A tribo deve pertencer à nação informada.
+        a tribo selecionada no Rally indicado por rally_id. Quando rally_id é
+        omitido ou nulo, usa o Rally que contém a data atual em America/Sao_Paulo.
+        A justificativa é obrigatória e a missão é opcional, mas deve pertencer
+        ao Rally selecionado. A tribo deve pertencer à nação informada.
       parameters:
         - $ref: '#/components/parameters/CabecalhoCsrf'
       requestBody:
@@ -1321,7 +1335,7 @@ paths:
         '404':
           $ref: '#/components/responses/NaoEncontrado'
         '409':
-          description: Não há um Rally ativo para registrar a pontuação
+          description: Não há Rally ativo e rally_id não foi informado
           content:
             application/json:
               schema:
@@ -2845,6 +2859,13 @@ components:
           maximum: 1000000
           nullable: true
           description: Quando omitido ou nulo, o serviço usa o valor padrão de 7000 pontos.
+        rally_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Rally de destino. Quando omitido ou nulo, o serviço seleciona o
+            Rally ativo na data atual de America/Sao_Paulo.
     RequisicaoPontuacaoManualTribo:
       type: object
       required: [nacao_id, tribo_id, pontos, justificativa]
@@ -2868,6 +2889,13 @@ components:
           type: string
           format: uuid
           nullable: true
+        rally_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Rally de destino. Quando omitido ou nulo, o serviço seleciona o
+            Rally ativo na data atual de America/Sao_Paulo.
     RespostaPontuacaoManual:
       type: object
       required:

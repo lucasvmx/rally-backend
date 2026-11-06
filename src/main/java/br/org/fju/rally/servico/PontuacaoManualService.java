@@ -48,12 +48,14 @@ public class PontuacaoManualService {
 
     @Transactional(readOnly = true)
     public List<RespostaPontuacaoManual> listar(HttpServletRequest requisicao) {
+        return listar(null, requisicao);
+    }
+
+    @Transactional(readOnly = true)
+    public List<RespostaPontuacaoManual> listar(UUID rallyId, HttpServletRequest requisicao) {
         acesso.exigirAssistente(requisicao);
-        Rally rally = rallyAtual();
-        if (rally == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Não há um Rally ativo para consultar ou registrar bonificações.");
-        }
+        Rally rally = resolverRally(rallyId,
+                "Não há um Rally ativo para consultar ou registrar bonificações.");
         return pontuacoes.findAllByRallyIdOrderByRegistradaEmDesc(rally.getId()).stream()
                 .map(RespostaPontuacaoManual::de)
                 .toList();
@@ -63,11 +65,8 @@ public class PontuacaoManualService {
     public RespostaPontuacaoManual registrar(RequisicaoPontuacaoManual dados,
                                              HttpServletRequest requisicao) {
         acesso.exigirAssistente(requisicao);
-        Rally rally = rallyAtual();
-        if (rally == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Não há um Rally ativo para registrar esta bonificação.");
-        }
+        Rally rally = resolverRally(dados.rallyId(),
+                "Não há um Rally ativo para registrar esta bonificação.");
 
         Tribo triboChamada = tribos.findById(dados.triboChamadaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo chamada não encontrada."));
@@ -100,10 +99,8 @@ public class PontuacaoManualService {
     public RespostaPontuacaoManual registrarParaTribo(RequisicaoPontuacaoTribo dados,
                                                       HttpServletRequest requisicao) {
         acesso.exigirAssistente(requisicao);
-        Rally rally = rallyAtual();
-        if (rally == null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Não há um Rally ativo para registrar esta pontuação.");
-        }
+        Rally rally = resolverRally(dados.rallyId(),
+                "Não há um Rally ativo para registrar esta pontuação.");
         Tribo tribo = tribos.findById(dados.triboId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tribo não encontrada."));
         if (!tribo.getNacao().getId().equals(dados.nacaoId())) {
@@ -114,7 +111,8 @@ public class PontuacaoManualService {
             missao = missoes.findById(dados.missaoId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Missão não encontrada."));
             if (!missao.getRally().getId().equals(rally.getId())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A missão precisa pertencer ao Rally ativo.");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "A missão precisa pertencer ao Rally selecionado.");
             }
         }
         String responsavel = requisicao.getUserPrincipal() instanceof Authentication autenticacao
@@ -124,6 +122,18 @@ public class PontuacaoManualService {
                 dados.justificativa().trim(), dados.pontos(), responsavel, Instant.now(), List.of(tribo));
         registro.associarMissao(missao);
         return RespostaPontuacaoManual.de(pontuacoes.save(registro));
+    }
+
+    private Rally resolverRally(UUID rallyId, String mensagemSemRally) {
+        if (rallyId != null) {
+            return rallies.findById(rallyId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Rally não encontrado."));
+        }
+        Rally rally = rallyAtual();
+        if (rally == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, mensagemSemRally);
+        }
+        return rally;
     }
 
     private Rally rallyAtual() {

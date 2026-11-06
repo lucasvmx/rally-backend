@@ -242,8 +242,9 @@ public class RallyController {
     }
 
     @GetMapping("/pontuacoes-manuais")
-    public List<RespostaPontuacaoManual> pontuacoesManuais(HttpServletRequest requisicao) {
-        return pontuacaoManualService.listar(requisicao);
+    public List<RespostaPontuacaoManual> pontuacoesManuais(
+            @RequestParam(name = "rally_id", required = false) UUID rallyId, HttpServletRequest requisicao) {
+        return pontuacaoManualService.listar(rallyId, requisicao);
     }
 
     @PostMapping("/pontuacoes-manuais")
