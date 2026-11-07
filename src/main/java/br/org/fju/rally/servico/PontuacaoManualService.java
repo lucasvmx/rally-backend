@@ -98,6 +98,17 @@ public class PontuacaoManualService {
     @Transactional
     public RespostaPontuacaoManual registrarParaTribo(RequisicaoPontuacaoTribo dados,
                                                       HttpServletRequest requisicao) {
+        return registrarParaTribo(dados, requisicao, false);
+    }
+
+    @Transactional
+    public RespostaPontuacaoManual descontarParaTribo(RequisicaoPontuacaoTribo dados,
+                                                      HttpServletRequest requisicao) {
+        return registrarParaTribo(dados, requisicao, true);
+    }
+
+    private RespostaPontuacaoManual registrarParaTribo(RequisicaoPontuacaoTribo dados,
+                                                       HttpServletRequest requisicao, boolean desconto) {
         acesso.exigirAssistente(requisicao);
         Rally rally = resolverRally(dados.rallyId(),
                 "Não há um Rally ativo para registrar esta pontuação.");
@@ -119,7 +130,7 @@ public class PontuacaoManualService {
                 ? autenticacao.getName() : "usuario autenticado";
         if (responsavel == null || responsavel.isBlank()) responsavel = "usuario autenticado";
         PontuacaoManual registro = new PontuacaoManual(UUID.randomUUID(), rally, tribo.getNacao(), tribo,
-                dados.justificativa().trim(), dados.pontos(), responsavel, Instant.now(), List.of(tribo));
+                dados.justificativa().trim(), desconto ? -dados.pontos() : dados.pontos(), responsavel, Instant.now(), List.of(tribo));
         registro.associarMissao(missao);
         return RespostaPontuacaoManual.de(pontuacoes.save(registro));
     }

@@ -4,6 +4,10 @@ import br.org.fju.rally.api.DadosMissao;
 import br.org.fju.rally.dominio.Missao;
 import br.org.fju.rally.dominio.Relatorio;
 import br.org.fju.rally.dominio.Tribo;
+import br.org.fju.rally.dominio.PontuacaoManual;
+import br.org.fju.rally.dominio.Nacao;
+import br.org.fju.rally.dominio.Rally;
+import br.org.fju.rally.repositorio.*;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -14,8 +18,34 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.*;
 
 class PontuacaoServiceTest {
+
+    @Test
+    void descontoAfetaSomenteOPlacarDaTriboDestinataria() {
+        var relatorios = mock(RelatorioRepositorio.class);
+        var tribos = mock(TriboRepositorio.class);
+        var rallies = mock(RallyRepositorio.class);
+        var manuais = mock(PontuacaoManualRepositorio.class);
+        var rally = mock(Rally.class);
+        var nacao = new Nacao(UUID.randomUUID(), "Nação");
+        var alvo = new Tribo(UUID.randomUUID(), "Alvo", nacao, true);
+        var outra = new Tribo(UUID.randomUUID(), "Outra", nacao, true);
+        var rallyId = UUID.randomUUID();
+        when(rally.getId()).thenReturn(rallyId);
+        when(rallies.findById(rallyId)).thenReturn(java.util.Optional.of(rally));
+        when(tribos.findAll()).thenReturn(List.of(alvo, outra));
+        when(relatorios.findByStatus("APROVADO")).thenReturn(List.of());
+        var desconto = new PontuacaoManual(UUID.randomUUID(), rally, nacao, alvo, "penalidade", -25,
+                "assistente", Instant.now(), List.of(alvo));
+        when(manuais.findAllByRallyId(rallyId)).thenReturn(List.of(desconto));
+        var servico = new PontuacaoService(relatorios, tribos, null, rallies, null,
+                new RegrasPontuacaoService(), manuais);
+        var placar = servico.gerarPlacar(rallyId);
+        assertThat(placar).anySatisfy(item -> { assertThat(item.triboId()).isEqualTo(alvo.getId()); assertThat(item.pontos()).isEqualTo(-25); });
+        assertThat(placar).anySatisfy(item -> { assertThat(item.triboId()).isEqualTo(outra.getId()); assertThat(item.pontos()).isZero(); });
+    }
 
     @Test
     void naoAplicaBonusLegadoSemRegraDinamica() {

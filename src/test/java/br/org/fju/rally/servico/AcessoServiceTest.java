@@ -22,6 +22,18 @@ class AcessoServiceTest {
     private final AcessoService servico = new AcessoService();
 
     @Test
+    void descontoExigeAssistenteOuAdministrador() {
+        var req = new MockHttpServletRequest();
+        assertThatThrownBy(() -> servico.exigirAssistente(req)).isInstanceOf(ResponseStatusException.class);
+        req.setUserPrincipal(jwt("COORDENADOR_TRIBO", UUID.randomUUID()));
+        assertThatThrownBy(() -> servico.exigirAssistente(req)).isInstanceOf(ResponseStatusException.class);
+        for (String papel : List.of("ASSISTENTE", "ADMINISTRADOR_SISTEMA")) {
+            req.setUserPrincipal(jwt(papel, null));
+            servico.exigirAssistente(req);
+        }
+    }
+
+    @Test
     void requestAnonimaNaoRecebeAcessoDeAssistente() {
         var req = new MockHttpServletRequest();
         assertThatThrownBy(() -> servico.exigirAdministracaoFormularios(req))

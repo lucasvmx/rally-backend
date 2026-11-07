@@ -259,6 +259,12 @@ public class RallyController {
         return pontuacaoManualService.registrarParaTribo(corpo, requisicao);
     }
 
+    @PostMapping("/pontuacoes-manuais/tribo/desconto")
+    public RespostaPontuacaoManual descontarPontuacaoTribo(
+            @Valid @RequestBody RequisicaoPontuacaoTribo corpo, HttpServletRequest requisicao) {
+        return pontuacaoManualService.descontarParaTribo(corpo, requisicao);
+    }
+
     @PostMapping("/regras/interpretar")
     public RespostaInterpretacao interpretar(@Valid @RequestBody RequisicaoInterpretacao corpo,
                                               HttpServletRequest requisicao) {

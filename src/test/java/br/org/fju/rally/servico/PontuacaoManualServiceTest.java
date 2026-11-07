@@ -60,6 +60,20 @@ class PontuacaoManualServiceTest {
     }
 
     @Test
+    void descontaSomenteDaTriboSelecionada() {
+        preparar();
+        when(pontuacoes.save(any())).thenAnswer(i -> i.getArgument(0));
+        var resposta = service.descontarParaTribo(
+                new RequisicaoPontuacaoTribo(nacaoId, triboId, 25, " penalidade ", null), request);
+        var captor = org.mockito.ArgumentCaptor.forClass(PontuacaoManual.class);
+        verify(pontuacoes).save(captor.capture());
+        assertEquals(List.of(tribo), captor.getValue().getTribosDestinatarias());
+        assertEquals(-25, resposta.pontosPorTribo());
+        assertEquals("penalidade", resposta.atividade());
+        verify(acesso).exigirAssistente(request);
+    }
+
+    @Test
     void rejeitaTriboDeOutraNacaoEMissaoDeOutroRally() {
         preparar();
         assertThrows(ResponseStatusException.class, () -> service.registrarParaTribo(

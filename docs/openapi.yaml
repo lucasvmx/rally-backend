@@ -1508,6 +1508,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Erro'
 
+  /api/v1/pontuacoes-manuais/tribo/desconto:
+    post:
+      tags: [Dados do Rally]
+      summary: Desconta pontos manualmente de uma tribo
+      description: >-
+        Requer role ASSISTENTE ou ADMINISTRADOR_SISTEMA. Informe em pontos a
+        quantidade positiva a descontar da tribo selecionada. O registro e a
+        resposta apresentam pontos_por_tribo negativo. Quando rally_id é omitido
+        ou nulo, usa o Rally que contém a data atual em America/Sao_Paulo.
+        A justificativa é obrigatória e a missão é opcional, mas deve pertencer
+        ao Rally selecionado. A tribo deve pertencer à nação informada.
+      parameters:
+        - $ref: '#/components/parameters/CabecalhoCsrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequisicaoPontuacaoManualTribo'
+      responses:
+        '200':
+          description: Desconto registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaPontuacaoManual'
+        '400':
+          $ref: '#/components/responses/ErroRequisicao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/NaoEncontrado'
+        '409':
+          description: Não há Rally ativo e rally_id não foi informado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
   /api/v1/regras/interpretar:
     post:
       tags: [Regras]
