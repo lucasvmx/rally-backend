@@ -10,6 +10,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,7 +28,7 @@ class InterpretadorDeRegrasTest {
     void incluiDiaDaDataNoNomeSemDuplicarPrefixoEPermiteNomeAusente() throws Exception {
         JsonNode respostaIa = resposta("""
                 {"rally":null,"missoes":[
-                {"nome":"Missão Esportes - Futsal","descricao":"Jogar futsal","data_inicio":"18/05/2026","data_fim":"18/05/2026"},
+                {"nome":"Missão Esportes - Futsal","descricao":"Jogar futsal","data_inicio":"18/05/2026","data_fim":"18/05/2026","prazo_envio":"18/05/2026 23:00:00"},
                 {"nome":null,"descricao":"Realizar atividade","data_inicio":"20/05/2026","data_fim":"20/05/2026"},
                 {"nome":"Sexta-Feira | Ação","descricao":"Realizar ação","data_inicio":"22/05/2026","data_fim":"22/05/2026"},
                 {"nome":"Atividade semanal","descricao":"Realizar atividade","data_inicio":"18/05/2026","data_fim":"24/05/2026"}
@@ -58,6 +59,7 @@ class InterpretadorDeRegrasTest {
         assertEquals(List.of("Segunda-Feira | Missão Esportes - Futsal", "Quarta-Feira",
                         "Sexta-Feira | Ação", "Atividade semanal"),
                 missoes.stream().map(missao -> missao.nome()).toList());
+        assertEquals(Instant.parse("2026-05-19T02:00:00Z"), missoes.getFirst().prazoEnvio());
     }
 
     @Test

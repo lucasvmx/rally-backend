@@ -28,7 +28,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -495,21 +494,21 @@ public class InterpretadorDeRegras {
             } catch (DateTimeParseException tambemIgnorada) {
                 try {
                     return LocalDateTime.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu HH:mm:ss"))
-                            .toInstant(ZoneOffset.UTC);
+                            .atZone(FUSO_RALLY).toInstant();
                 } catch (DateTimeParseException horarioBrasileiroInvalido) {
                     try {
-                        return LocalDateTime.parse(valor).toInstant(ZoneOffset.UTC);
+                        return LocalDateTime.parse(valor).atZone(FUSO_RALLY).toInstant();
                     } catch (DateTimeParseException horarioIsoInvalido) {
                         try {
                             return LocalDate.parse(valor, DateTimeFormatter.ofPattern("d/M/uuuu"))
-                                    .atStartOfDay().toInstant(ZoneOffset.UTC);
+                                    .atStartOfDay().atZone(FUSO_RALLY).toInstant();
                         } catch (DateTimeParseException dataBrasileiraInvalida) {
                             try {
-                                return LocalDate.parse(valor).atStartOfDay().toInstant(ZoneOffset.UTC);
+                                return LocalDate.parse(valor).atStartOfDay().atZone(FUSO_RALLY).toInstant();
                             } catch (DateTimeParseException dataIsoInvalida) {
                                 try {
                                     return dataFim == null ? null : dataFim.atTime(LocalTime.parse(valor))
-                                            .toInstant(ZoneOffset.UTC);
+                                            .atZone(FUSO_RALLY).toInstant();
                                 } catch (DateTimeParseException naoEhHorario) {
                                     return null;
                                 }
@@ -599,8 +598,13 @@ public class InterpretadorDeRegras {
 
                 Crie uma regra por missão e preserve missões separadas, inclusive missões relâmpago. Todas exigem
                 exatamente uma foto por relatório: exige_foto é sempre true. Use DD/MM/AAAA para datas e
-                DD/MM/AAAA HH:mm:ss para prazos; use null se não houver prazo. Não use ISO 8601 nem "T".
-                Se houver dia e mês sem ano, use %s.
+                DD/MM/AAAA HH:mm:ss para prazos. Não use ISO 8601 nem "T".
+                Se houver dia e mês sem ano, use %s. Preserve as datas e horas informadas no recado,
+                interpretando-as no horário de Brasília (America/Sao_Paulo), sem convertê-las para outro fuso.
+                O prazo explícito prevalece. Se omitido, use a data final da missão: de segunda a sexta, 23:00:00
+                do mesmo dia; no domingo, 20:00:00 do mesmo dia. Se somente a hora for omitida, aplique o padrão
+                à data informada para o prazo. Para sábado ou data indeterminada, não invente horário; use null
+                quando não for possível determinar um prazo completo.
 
                 O escopo padrão é TRIBO: credite cada relatório à sua tribo. A pontuação da nação é somente a soma
                 dos pontos de suas tribos; não existe saldo nacional separado. Sempre que uma regra atribuir ou
@@ -655,8 +659,12 @@ public class InterpretadorDeRegras {
 
                 Datas de Rally e missões: DD/MM/AAAA; prazo com hora: DD/MM/AAAA HH:mm:ss; prazo sem hora: DD/MM/AAAA.
                 Não use ISO 8601 nem "T". Referência: %s. Complete dia/mês sem ano com %s; não infira dia ou mês
-                ausentes; não registre o ano completado como ambiguidade. Preserve o dia e a hora informados no recado;
-                não converta as datas para outro fuso horário. Uma missão com várias datas pode usar o período entre a
+                ausentes; não registre o ano completado como ambiguidade. Preserve as datas e horas informadas no recado,
+                interpretando-as no horário de Brasília (America/Sao_Paulo), sem convertê-las para outro fuso.
+                O prazo explícito prevalece. Se omitido, use a data final da missão: de segunda a sexta, 23:00:00
+                do mesmo dia; no domingo, 20:00:00 do mesmo dia. Se somente a hora for omitida, aplique o padrão
+                à data informada para o prazo. Para sábado ou data indeterminada, não invente horário; mantenha a data
+                do prazo se informada, ou null se não houver prazo. Uma missão com várias datas pode usar o período entre a
                 primeira e a última. Quando o recado indicar dias da semana específicos dentro de um período, associe
                 cada atividade ao dia correspondente do calendário e use essa data tanto em data_inicio como em
                 data_fim; não use o período inteiro para cada atividade. Por exemplo, de 18 a 24/05/2026, segunda,
@@ -664,7 +672,7 @@ public class InterpretadorDeRegras {
                 o ano atual quando omitido. Se houver mais de uma data possível para o mesmo dia, não escolha uma
                 arbitrariamente e registre a ambiguidade. Se as datas da missão não estiverem no recado, use o período do rali quando
                 esse período estiver explícito; caso contrário deixe as datas null para o fluxo preencher pelo rali
-                associado, sem criar uma ambiguidade. Só use um prazo se estiver explícito; null é válido.
+                associado, sem criar uma ambiguidade. Se a data para o prazo padrão não puder ser determinada, use null.
 
                 Regras de pontuação (cada regra é um objeto com "tipo"):
                 - POR_PESSOA: categoria (INTEGRANTE, NOVO_AFASTADO ou categoria explícita no recado), pontos, quando.
